@@ -8,7 +8,7 @@
 CLICK_DECLS
 
 int
-BasicOnOffChannel::thresholdrand (const cdf_t* distribution)
+BasicOnOffChannel::thresholdrand (const Vector<CDFPoint> &distribution)
 {
   uint32_t rand;
   int min,
@@ -17,28 +17,24 @@ BasicOnOffChannel::thresholdrand (const cdf_t* distribution)
   
   rand = click_random();
   min = 0;
-  max = distribution->len - 1;
-  pos = distribution->len / 2;
+  max = distribution.size() - 1;
+  pos = distribution.size() / 2;
   while ((pos != 0) && (pos != max)) {
-    if (rand < (distribution->points + pos)->probability) {
+    if (rand < distribution[pos].probability) {
       max = pos - 1;
       pos = min + (pos - min) / 2;
-    } else if (rand > (distribution->points + pos + 1)->probability) {
+    } else if (rand > distribution[pos + 1].probability) {
       min = pos;
       pos = pos + (max - pos) / 2;
     } else {
       break;
     }
   }
-  return (distribution->points + pos)->point;
+  return distribution[pos].point;
 }
 
 /* Void (con|de)structor */
-BasicOnOffChannel::BasicOnOffChannel()
-{
-  _error_free_burst_length = NULL;
-  _error_burst_length = NULL;
-}
+BasicOnOffChannel::BasicOnOffChannel() {}
 
 BasicOnOffChannel::~BasicOnOffChannel() {}
 
@@ -78,16 +74,12 @@ BasicOnOffChannel::configure(Vector<String> &conf, ErrorHandler *errh)
 }
 
 int
-BasicOnOffChannel::load_cdf_from_file(const String filename, ErrorHandler *errh, cdf_t **dest)
+BasicOnOffChannel::load_cdf_from_file(const String filename, ErrorHandler *errh, Vector<CDFPoint> &dist)
 {
+#define UINT32_SIZE 4
   uint32_t buffer;
   uint32_t len;
-#define UINT32_SIZE 4
-  
-  *dest = (cdf_t*) malloc (sizeof(cdf_t));
-  if (*dest == NULL) {
-    return -3;
-  }
+  CDFPoint point;
   
   _ff.filename() = filename;
   if (_ff.initialize(errh) < 0) {
@@ -98,30 +90,28 @@ BasicOnOffChannel::load_cdf_from_file(const String filename, ErrorHandler *errh,
     _ff.cleanup();
     return -2;
   }
-  (*dest)->len = len;
-  (*dest)->points = (cdfPoint_t*) malloc (len * sizeof(cdfPoint_t));
-  if ((*dest)->points == NULL) {
-    free(*dest);
-    *dest = NULL;
-    _ff.cleanup();
-    return -3;
-  }
+  dist.reserve(len);
   
   while (len != 0) {
     --len;
     if (_ff.read(&buffer, UINT32_SIZE, errh) != UINT32_SIZE) {
       _ff.cleanup();
-      return -4;
+      dist.clear();
+      return -3;
     }
     if (buffer > INT_MAX) {
-      return -5;
+      _ff.cleanup();
+      dist.clear();
+      return -4;
     }
-    ((*dest)->points + len)->point = (int) buffer;
+    point.point = (int) buffer;
     if (_ff.read(&buffer, UINT32_SIZE, errh) != UINT32_SIZE) {
       _ff.cleanup();
-      return -6;
+      dist.clear();
+      return -5;
     }
-    ((*dest)->points + len)->probability = buffer;
+    point.probability = buffer;
+    dist.push_back(point);
   }
   _ff.cleanup();
   return 0;
@@ -130,30 +120,20 @@ BasicOnOffChannel::load_cdf_from_file(const String filename, ErrorHandler *errh,
 int
 BasicOnOffChannel::initialize(ErrorHandler *errh)
 {
-  load_cdf_from_file(_error_cdf_filename, errh, &_error_burst_length);
-  load_cdf_from_file(_error_free_cdf_filename, errh, &_error_free_burst_length);
+  load_cdf_from_file(_error_cdf_filename, errh, _error_burst_length);
+  load_cdf_from_file(_error_free_cdf_filename, errh, _error_free_burst_length);
   
   /* Initialize state */
   _remaining_length_in_state = 0;
-  _current_state = ((double) click_random() / (double) CLICK_RAND_MAX) < _initial_error_probability;
+  _current_state = (double) click_random() < _initial_error_probability;
   return 0;
 }
 
 void
 BasicOnOffChannel::cleanup(CleanupStage)
 {
-  if (_error_free_burst_length != NULL) {
-    if (_error_free_burst_length->points != NULL) {
-      free(_error_free_burst_length->points);
-    }
-    free(_error_free_burst_length);
-  }
-  if (_error_burst_length != NULL) {
-    if (_error_burst_length->points != NULL) {
-      free(_error_burst_length->points);
-    }
-    free(_error_burst_length);
-  }
+  _error_burst_length.clear();
+  _error_free_burst_length.clear();
 }
 
 void

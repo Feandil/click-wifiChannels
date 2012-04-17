@@ -2,29 +2,24 @@
 #define CLICK_BASICONOFFCHANNEL_HH
 #include <click/element.hh>
 #include <click/fromfile.hh>
+#include <click/vector.hh>
 CLICK_DECLS
 
 class BasicOnOffChannel : public Element {
 
   private:
 
-    /* Structures used to hold the Cumulative distribution functions */
-    struct cdfPoint {
-      uint32_t probability;
-      int point;
+    /* Classe used to hold the Cumulative distribution functions */
+    class CDFPoint {
+      public:
+        uint32_t probability;
+        int point;
     };
-	
-	typedef struct cdfPoint cdfPoint_t;
-    struct cdf {
-      uint32_t len;
-      cdfPoint_t *points;
-    };
-	typedef struct cdf cdf_t;
   
     /* Variables used to store the statistic representation from the configuration files */
     uint32_t _initial_error_probability;
-    cdf_t *_error_burst_length;
-    cdf_t *_error_free_burst_length;
+    Vector<CDFPoint> _error_burst_length;
+    Vector<CDFPoint> _error_free_burst_length;
   
     /* FileDescriptor */
     FromFile _ff;
@@ -32,10 +27,10 @@ class BasicOnOffChannel : public Element {
     String _error_free_cdf_filename;
 	
 	  /* Load a CDF for a file */
-    int load_cdf_from_file(const String, ErrorHandler *, cdf_t **);
+    int load_cdf_from_file(const String, ErrorHandler *, Vector<CDFPoint>&);
 
     /* Generate a random number from a Cumulative distribution functions */
-    int thresholdrand(const cdf_t *);
+    int thresholdrand(const Vector<CDFPoint>&);
    
     /* Current state description */
 
