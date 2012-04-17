@@ -38,20 +38,14 @@ class BasicOnOffChannel : public Element {
     int _remaining_length_in_state;
  
   public:
-
-    /* Void constructors */
-    BasicOnOffChannel();
-    ~BasicOnOffChannel();
-
     /* Behaviour descriptors */
     const char *class_name() const { return "BasicOnOffChannel"; }
     const char *port_count() const { return PORTS_1_1X2; }
     const char *processing() const { return PUSH; }
     const char *flow_code()  const { return COMPLETE_FLOW; }
 
-    /* Static initializer/cleanup : called only once by Click */
+    /* Static initializer : called only once by Click */
     void static_initialize();
-    void static_cleanup();
 
     /* Configure the Element */
     int configure(Vector<String> &, ErrorHandler *);

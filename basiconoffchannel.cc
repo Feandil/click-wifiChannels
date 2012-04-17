@@ -33,21 +33,11 @@ BasicOnOffChannel::thresholdrand (const Vector<CDFPoint> &distribution)
   return distribution[pos].point;
 }
 
-/* Void (con|de)structor */
-BasicOnOffChannel::BasicOnOffChannel() {}
-
-BasicOnOffChannel::~BasicOnOffChannel() {}
-
 void
 BasicOnOffChannel::static_initialize()
 {
   //Probably not needed:
   click_random_srandom();
-}
-
-void
-BasicOnOffChannel::static_cleanup()
-{
 }
 
 int
