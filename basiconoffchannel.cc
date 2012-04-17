@@ -115,7 +115,7 @@ BasicOnOffChannel::initialize(ErrorHandler *errh)
   
   /* Initialize state */
   _remaining_length_in_state = 0;
-  _current_state = (double) click_random() < _initial_error_probability;
+  _current_state = click_random() < _initial_error_probability;
   return 0;
 }
 
