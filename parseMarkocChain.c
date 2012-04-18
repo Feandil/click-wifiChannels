@@ -22,8 +22,12 @@ static uint32_t* calculate_values(const uint32_t manx_rand)
   }
   for (i = 0; i < state_mod; ++i) {
     tmp = (i << 1);
-    temp = ((long double) states[tmp + 1]) / ((long double) states[tmp + 1] + states[tmp]) * ((long double) manx_rand);
-    ret[i] = (uint32_t) temp;
+    if (states[tmp + 1] == 0) {
+      ret[i] = 0;
+    } else {
+      temp = ((long double) states[tmp + 1]) / ((long double) states[tmp + 1] + states[tmp]) * ((long double) manx_rand);
+      ret[i] = (uint32_t) temp;
+    }
   }
   return ret;
 }
