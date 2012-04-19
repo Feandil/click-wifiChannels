@@ -25,6 +25,9 @@ static void usage(int err)
   fprintf(output, "Supported class with subotions:\n");
   fprintf(output, " * markovchain: k-order Marchov chain representation (2^k states)\n");
   fprintf(output, "   -k <k>             Order of the Markov chain\n");
+  fprintf(output, " * basiconoff: On-Off representation without cdf mathematic determination\n");
+  fprintf(output, "       --free <file>  Filename used for error-free burst length cdf\n");
+  fprintf(output, "       --err  <file>  Filename used for error burst length cdf\n");
   
   exit(err);
 }

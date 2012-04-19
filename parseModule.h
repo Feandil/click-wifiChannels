@@ -3,8 +3,12 @@
 
 #include <inttypes.h>
 
+#ifdef __cplusplus
+extern "C" {
+#else
 const char *unknownOption;
 const char *tooMuchOption;
+#endif
 
 struct module {
   int (*init) (const int, char **, char, const char**);
@@ -17,5 +21,10 @@ struct module {
 struct module* init(char *name);
 
 struct module* initMarkovChain();
+struct module* initBasicOnOff();
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
