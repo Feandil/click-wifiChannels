@@ -33,7 +33,7 @@ static uint32_t* calculate_values(const uint32_t manx_rand)
   return ret;
 }
 
-static int markov_init(const int argc, char *argv[], const char ** err)
+static int markov_init(const int argc, char *argv[], char human_readable, const char ** err)
 {
   int opt;
   optind = 1;

@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
       fprintf(stderr,"Unknown Module '%s'\n", argv[optind]);
       return 2;
     }
-    ret = mod->init(argc - optind, argv + optind, &err_message);
+    ret = mod->init(argc - optind, argv + optind, human_readable, &err_message);
     if (ret) {
       fprintf(stderr, "%s (%i)\n", err_message, ret);
       return ret;
