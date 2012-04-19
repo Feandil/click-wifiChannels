@@ -16,13 +16,16 @@ static void usage(int err)
     output = stdout;
   }
   fprintf(output, "parseInput: Parse an input onto a statistic representation\n\n");
-  fprintf(output, "Usage: ./parseInput [OPTIONS] CLASS\n");
+  fprintf(output, "Usage: ./parseInput [OPTIONS] CLASS [CLASS_OPTIONS]\n");
   fprintf(output, "           Try to transform the input onto a static representation of class CLASS\n");
   fprintf(output, "Options:\n");
   fprintf(output, "     --help           Print this ...\n");
   fprintf(output, " -h, --human-readable Do not output Binary representation but human readable representation\n");
-  fprintf(output, " -p <parameter>       Specify a parameter for the representation (default 0)\n");
   fprintf(output, " -m, --max_rand <max> Specify the CLICK_RAND_MAX used by click (Default value 0x%"PRIx32" )\n", DEFAULT_MAX_RAND);
+  fprintf(output, "Supported class with subotions:\n");
+  fprintf(output, " * markovchain: k-order Marchov chain representation (2^k states)\n");
+  fprintf(output, "   -k <k>             Order of the Markov chain\n");
+  
   exit(err);
 }
 
@@ -36,28 +39,24 @@ const struct option long_options[] = {
 int main(int argc, char *argv[])
 {
   char human_readable;
+  const char *err_message;
   int opt,
       buf,
-      ret,
-    param;
+      ret;
   uint32_t max_rand;
   struct module* mod;
   
   /* Default values */
   human_readable = 0;
-  param = 0;
   max_rand = DEFAULT_MAX_RAND;
 
-  while((opt = getopt_long(argc, argv, "hp:m:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "+hm:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'e':
         usage(0);
         break;
       case 'h':
         human_readable = 1;
-        break;
-      case 'p':
-        param = atoi(optarg);
         break;
       case 'm':
         if (max_rand == DEFAULT_MAX_RAND) {
@@ -71,7 +70,7 @@ int main(int argc, char *argv[])
     }
   }
 
-  if((argc <= optind) || (argc > optind + 1))
+  if(argc <= optind)
   {
     usage(1);
     return 1;
@@ -81,12 +80,9 @@ int main(int argc, char *argv[])
       fprintf(stderr,"Unknown Module '%s'\n", argv[optind]);
       return 2;
     }
-    ret = mod->init(param);
+    ret = mod->init(argc - optind, argv + optind, &err_message);
     if (ret) {
-      fprintf(stderr, "Error durind module initialiezation : %i\n", ret);
-      if (param == 0) {
-        fprintf(stderr, "  (Could be missing parameter)\n");
-      }
+      fprintf(stderr, "%s (%i)\n", err_message, ret);
       return ret;
     }
   }

@@ -2,8 +2,11 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <getopt.h>
 
 #include "parseModule.h"
+
+static const char knotset[] = "K need to be set != (-k option)";
 
 int k;
 uint32_t    state,
@@ -14,7 +17,6 @@ static uint32_t* calculate_values(const uint32_t manx_rand)
 {
   uint32_t   i,
            tmp;
-  double temp;
   
   uint32_t* ret = malloc(state_mod * sizeof(uint32_t));
   if (ret == NULL) {
@@ -25,20 +27,36 @@ static uint32_t* calculate_values(const uint32_t manx_rand)
     if (states[tmp + 1] == 0) {
       ret[i] = 0;
     } else {
-      temp = ((long double) states[tmp + 1]) / ((long double) states[tmp + 1] + states[tmp]) * ((long double) manx_rand);
-      ret[i] = (uint32_t) temp;
+      ret[i] = (uint32_t) (((long double) states[tmp + 1]) / ((long double) states[tmp + 1] + states[tmp]) * ((long double) manx_rand));
     }
   }
   return ret;
 }
 
-static int markov_init(const int i)
+static int markov_init(const int argc, char *argv[], const char ** err)
 {
-  if (i == 0) {
+  int opt;
+  optind = 1;
+  k = 0;
+  while((opt = getopt(argc, argv, "k:")) != -1) {
+    switch(opt) {
+      case 'k':
+        k = atoi(optarg);
+        break;
+      default:
+        *err = unknownOption;
+        return opt;
+    }
+  }
+  if (k == 0) {
+    *err = knotset;
     return -1;
   }
-  k = i;
-  state_mod = 1 << i;
+  if(argc > optind) {
+    *err = tooMuchOption;
+    return argc;
+  }
+  state_mod = 1 << k;
   state = 0;
   states = malloc ((state_mod << 1) * sizeof(uint64_t));
   if (states == NULL) {

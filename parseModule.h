@@ -3,8 +3,11 @@
 
 #include <inttypes.h>
 
+const char *unknownOption;
+const char *tooMuchOption;
+
 struct module {
-  int (*init) (const int);
+  int (*init) (const int, char **, const char**);
   int (*addChar) (const int);
   void (*printBinary) (const uint32_t);
   void (*printHuman) (const uint32_t);
