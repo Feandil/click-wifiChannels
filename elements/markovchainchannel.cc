@@ -79,7 +79,7 @@ MarkovChainChannel::push (int, Packet *p)
   bool transmit = click_random() < _success_probablilty[_current_state];
   
   /* Update the state */
-  _current_state = (_current_state << 1) % _state_modulo;
+  _current_state = ((_current_state << 1) + transmit) % _state_modulo;
   
   /* Drop or transmit */
   if (transmit) {
