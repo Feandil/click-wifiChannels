@@ -111,9 +111,9 @@ static int basiconoff_addChar(const int input)
 
 static void basiconoff_printBinaryToFile(const uint32_t max_rand, const std::map<uint32_t, uint64_t> &map, const uint64_t total, const char* dest)
 {
-   std::map<uint32_t, uint32_t>* ret = calculate_values(max_rand, map, total);
-   std::ofstream output;
-   output.open(dest);
+  std::map<uint32_t, uint32_t>* ret = calculate_values(max_rand, map, total);
+  std::ofstream output;
+  output.open(dest);
 #define WRITE4(x)  if (output.write((char*)x,4).bad())  std::cerr << "error when writing to output(" << dest << ")" <<std::endl;
    WRITE4(&max_rand)
    
@@ -141,7 +141,7 @@ static void basiconoff_printHumanToStream(const uint32_t max_rand, const std::ma
 
   std::map<uint32_t, uint32_t>::const_iterator it;
   for (it = (*ret).begin(); it != (*ret).end(); ++it) {
-    streamout << "- " << (*it).first << ": 0x" << (*it).second << " (" << ((long double)(*it).second/((long double) max_rand))*100 << "%)" << std::endl;
+    streamout << "- " << (*it).first << ": " << (*it).second << " (" << ((long double)(*it).second/((long double) max_rand))*100 << "%)" << std::endl;
   }
   delete(ret);
 }

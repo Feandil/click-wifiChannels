@@ -6,7 +6,7 @@ CPP_LIBS=-lstdc++
 all: parseInput
 
 parseInput: parseInput.o parseModule.o parseMarkocChain.o parseBasicOnOff.o
-	$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) $(TC_CFLAGS) $(CPP_LIBS) -o $@
+	$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) $(CPP_LIBS) -o $@
 
 clean:
 	-rm *.o
