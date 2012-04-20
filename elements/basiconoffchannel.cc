@@ -19,18 +19,25 @@ BasicOnOffChannel::thresholdrand (const Vector<CDFPoint> &distribution)
   min = 0;
   max = distribution.size() - 1;
   pos = distribution.size() / 2;
-  while ((pos != 0) && (pos != max)) {
-    if (rand < distribution[pos].probability) {
-      max = pos - 1;
-      pos = min + (pos - min) / 2;
-    } else if (rand > distribution[pos + 1].probability) {
+  while (max - min != 1) {
+    if (rand > distribution[pos].probability) {
+      if (pos == max) {
+        break;
+      }
       min = pos;
-      pos = pos + (max - pos) / 2;
-    } else {
+      pos = min + (max - min) / 2;
+    } else if (pos == min) {
       break;
+    } else {
+      max = pos;
+      pos = min + (max - min) / 2;
     }
   }
-  return distribution[pos].point;
+  if (rand > distribution[min].probability) {
+    return distribution[max].point;
+  } else {
+    return distribution[min].point;
+  }
 }
 
 void
