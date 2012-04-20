@@ -87,7 +87,7 @@ static void markov_printBinary(const uint32_t max_rand)
     return;
   }
 #define WRITE4(x)  if (write(1,x,4) != 4) fprintf(stderr, "error when writing to output");
-   WRITE4(&max_rand)
+   WRITE4(&state_mod)
   for (temp = 0; temp < state_mod; ++temp) {
     WRITE4(ret + temp)
   }

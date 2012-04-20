@@ -115,7 +115,8 @@ static void basiconoff_printBinaryToFile(const uint32_t max_rand, const std::map
   std::ofstream output;
   output.open(dest);
 #define WRITE4(x)  if (output.write((char*)x,4).bad())  std::cerr << "error when writing to output(" << dest << ")" <<std::endl;
-   WRITE4(&max_rand)
+  uint32_t size = map.size();
+  WRITE4(&size)
    
   std::map<uint32_t, uint32_t>::const_iterator it;
   for (it = (*ret).begin(); it != (*ret).end(); ++it) {
@@ -136,8 +137,9 @@ static void basiconoff_printBinary(const uint32_t max_rand)
 static void basiconoff_printHumanToStream(const uint32_t max_rand, const std::map<uint32_t, uint64_t> &map, const uint64_t total, std::ostream &streamout)
 {
   std::map<uint32_t, uint32_t>* ret = calculate_values(max_rand, map, total);
-   
-  streamout << "(MaxRand: 0x" << max_rand << ")" << std::endl;
+
+  streamout << "(MaxRand: " << max_rand << ")" << std::endl;
+  streamout << "CDF size: " << map.size() << std::endl;
 
   std::map<uint32_t, uint32_t>::const_iterator it;
   for (it = (*ret).begin(); it != (*ret).end(); ++it) {
