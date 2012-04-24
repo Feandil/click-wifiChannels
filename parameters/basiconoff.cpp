@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 
-const struct option ParamBasicOnOff::basiconoff_long_options[] = {
+const struct option ParamBasicOnOff::long_options[] = {
   {"free",        required_argument, 0,  'f' },
   {"err",         required_argument, 0,  'r' },
   {NULL,                          0, 0,   0  }
@@ -20,7 +20,7 @@ ParamBasicOnOff::init(const int argc, char **argv, const bool human_readable, co
   optind = 1;
   error_filename = NULL;
   free_filename = NULL;
-  while((opt = getopt_long(argc, argv, "", basiconoff_long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "", long_options, NULL)) != -1) {
     switch(opt) {
       case 'f':
          free_filename = optarg;

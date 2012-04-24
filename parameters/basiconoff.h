@@ -12,7 +12,7 @@ class ParamBasicOnOff : public ParamModule {
   private:
 
     /* static stuff */
-    static const struct option basiconoff_long_options[];
+    static const struct option long_options[];
     static const char * const needfiles;
 
     /* Variables */
