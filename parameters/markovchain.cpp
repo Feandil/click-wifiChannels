@@ -96,10 +96,10 @@ void
 ParamMarckovChain::printHuman(const uint32_t max_rand)
 {
   uint32_t temp;
-  printf("(MaxRand: 0x%"PRIx32")\n", max_rand);
-  printf("State Number : %"PRIu32"\n", state_mod);
-  printf("Probability of success of transmission in state:\n");
+  std::cout << "(MaxRand: 0x" << std::hex << max_rand << ")" << std::endl;
+  std::cout << "State Number : 0x" << std::hex << max_rand << std::endl;
+  std::cout << "Probability of success of transmission in state:" << std::endl;
   for (temp = 0; temp < state_mod; ++temp) {
-    printf("- %"PRIx32": 0x%"PRIx32" (%Lg%%)\n", temp, transitions[temp], ((long double)transitions[temp]/((long double) max_rand))*100);
+    std::cout << "- 0x" << std::hex << temp << ": 0x%" << std::hex << transitions[temp] << " (" << ((long double)transitions[temp]/((long double) max_rand))*100 << "%)" << std::endl;
   }
 }

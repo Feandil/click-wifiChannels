@@ -147,12 +147,12 @@ ParamBasicOnOff::printBinary(void)
 void
 ParamBasicOnOff::printHumanToStream(const uint32_t max_rand, const std::map<uint32_t, uint32_t> &map, std::ostream &streamout)
 {
-  streamout << "(MaxRand: " << max_rand << ")" << std::endl;
+  streamout << "(MaxRand: 0x" << std::hex << max_rand << ")" << std::endl;
   streamout << "CDF size: " << map.size() << std::endl;
 
   std::map<uint32_t, uint32_t>::const_iterator it;
   for (it = map.begin(); it != map.end(); ++it) {
-    streamout << "- " << it->first << ": " << it->second << " (" << ((long double)it->second/((long double) max_rand))*100 << "%)" << std::endl;
+    streamout << "- " << it->first << ": 0x" << std::hex << it->second << " (" << ((long double)it->second/((long double) max_rand))*100 << "%)" << std::endl;
   }
 }
 
