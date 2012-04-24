@@ -1,4 +1,4 @@
-#include "basiconoffchannel.hh"
+#include "basiconoffchannel.h"
 #include <iostream>
 #include <fstream>
 #include <limits.h>

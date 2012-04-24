@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <vector>
 #include <string>
-#include "module.hh"
+#include "module.h"
 
 class BasicOnOffChannel : public TestModule {
 

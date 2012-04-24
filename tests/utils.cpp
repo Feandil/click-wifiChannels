@@ -1,4 +1,4 @@
-#include "module.hh"
+#include "module.h"
 #include <ios>
 
 #define __STDC_FORMAT_MACROS
@@ -8,8 +8,8 @@
 #include <iostream>
 #include <fstream>
 
-#include "markovchainchannel.hh"
-#include "basiconoffchannel.hh"
+#include "markovchainchannel.h"
+#include "basiconoffchannel.h"
 
 TestRandom::TestRandom(uint32_t max)
 {

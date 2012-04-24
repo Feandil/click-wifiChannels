@@ -1,4 +1,4 @@
-#include "markovchainchannel.hh"
+#include "markovchainchannel.h"
 #include <iostream>
 #include <fstream>
 #include <stdio.h>

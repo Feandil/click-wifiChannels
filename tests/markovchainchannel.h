@@ -4,7 +4,7 @@
 #define __STDC_FORMAT_MACROS
 #include <stdint.h>
 #include <vector>
-#include "module.hh"
+#include "module.h"
 
 class MarkovChainChannel : public TestModule {
 
