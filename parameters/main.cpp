@@ -29,6 +29,7 @@ static void usage(int err)
   *output << "Supported class with subotions:" << std::endl;
   *output << " * markovchain: k-order Marchov chain representation (2^k states)" << std::endl;
   *output << "   -k <k>             Order of the Markov chain" << std::endl;
+  *output << "   -o <filename>      File used as the output (only if !-h)" << std::endl;
   *output << " * basiconoff: On-Off representation without cdf mathematic determination" << std::endl;
   *output << "       --free <file>  Filename used for error-free burst length cdf" << std::endl;
   *output << "       --err  <file>  Filename used for error burst length cdf" << std::endl;

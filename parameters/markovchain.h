@@ -11,6 +11,7 @@ class ParamMarckovChain : public ParamModule {
     int k;
     uint32_t state, state_mod, *transitions;
     uint64_t *states;
+    const char * output_filename;
 
     /* Error String */
     static const char * const knotset;
@@ -19,6 +20,7 @@ class ParamMarckovChain : public ParamModule {
 
     /* Initialize the module */
     int init(const int, char **, const bool, const char**);
+    void init(const int, const char* const);
 
     /* Clean the module */
     void clean();

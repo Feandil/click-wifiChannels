@@ -8,16 +8,33 @@
 
 const char * const ParamMarckovChain::knotset = "K need to be set != (-k option)";
 
+void
+ParamMarckovChain::init(const int kb, const char* const filename)
+{
+  k = kb;
+  state_mod = 1 << k;
+  state = 0;
+  states = new uint64_t[state_mod << 1];
+  transitions = new uint32_t[state_mod];
+  if (filename != NULL) {
+    output_filename = filename;
+  }
+}
+
 int
 ParamMarckovChain::init(const int argc, char *argv[], const bool human_readable, const char ** err)
 {
   int opt;
   optind = 1;
   k = 0;
-  while((opt = getopt(argc, argv, "k:")) != -1) {
+  output_filename = NULL;
+  while((opt = getopt(argc, argv, "k:o:")) != -1) {
     switch(opt) {
       case 'k':
         k = atoi(optarg);
+        break;
+      case 'o':
+        output_filename = optarg;
         break;
       default:
         *err = unknownOption;
@@ -32,10 +49,7 @@ ParamMarckovChain::init(const int argc, char *argv[], const bool human_readable,
     *err = tooMuchOption;
     return argc;
   }
-  state_mod = 1 << k;
-  state = 0;
-  states = new uint64_t[state_mod << 1];
-  transitions = new uint32_t[state_mod];
+  init(k, NULL);
   return 0;
 }
 
@@ -84,11 +98,23 @@ ParamMarckovChain::finalize(const uint32_t manx_rand)
 void
 ParamMarckovChain::printBinary()
 {
+  std::ostream *output;
+  std::ofstream *output_f;
+  if (output_filename == NULL ) {
+    output_f = NULL;
+    output = &std::cout;
+  } else {
+    output_f = new std::ofstream(output_filename);
+    output = output_f;
+  }
   uint32_t temp;
-#define WRITE4(x)  if (write(1,x,4) != 4) fprintf(stderr, "error when writing to output");
+#define WRITE4(x)  if (output->write((char*)(x),4).bad()) { std::cerr << "error when writing to output" <<std::endl; exit (-1); }
    WRITE4(&state_mod)
   for (temp = 0; temp < state_mod; ++temp) {
     WRITE4(transitions + temp)
+  }
+  if (output_f != NULL ) {
+    output_f->close();
   }
 }
 
