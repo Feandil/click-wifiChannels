@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>
-
+#include <cmath>
 
 const struct option ParamBasicMTA::long_options[] = {
   {"free",        required_argument, 0,  'f' },
@@ -162,8 +162,8 @@ ParamBasicMTA::nextRound()
     temp *= temp;
     standard_deviation += temp * ((double) it->second) / total;
   }
-  total = mean + standard_deviation;
-  if (total >= UINT32_MAX) {
+  total = mean + std::sqrt(standard_deviation);
+  if ((!std::isfinite(total)) || (total >= UINT32_MAX)) {
     std::cerr << "OVERFLOW" << std::endl;
   }
   C = total;
