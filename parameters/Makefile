@@ -2,7 +2,7 @@ CXXFLAGS=-pipe -O2 -g -Wall -Werror -Wchar-subscripts -Wundef -Wshadow -Wwrite-s
 
 all: parseInput
 
-parseInput: main.o module.o markovchain.o basiconoff.o
+parseInput: main.o module.o markovchain.o basiconoff.o basicmta.o
 	$(LINK.cpp) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
 clean:

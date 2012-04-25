@@ -13,9 +13,6 @@ class ParamMarckovChain : public ParamModule {
     uint64_t *states;
     const char * output_filename;
 
-    /* Error String */
-    static const char * const knotset;
-
   public:
 
     /* Initialize the module */
@@ -37,6 +34,9 @@ class ParamMarckovChain : public ParamModule {
     /* Output */
     void printBinary();
     void printHuman(const uint32_t);
+    
+    /* Error String */
+    static const char * const knotset;
 };
 
 #endif
