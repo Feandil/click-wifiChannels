@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
   uint32_t max_rand;
   ParamModule *mod;
   std::istream *in;
-  std::ifstream *fin;
+  std::ifstream *fin = NULL;
   
   /* Default values */
   human_readable = 0;
@@ -97,6 +97,9 @@ int main(int argc, char *argv[])
         break;
       case 'h':
         human_readable = true;
+        break;
+      case 'i':
+        input_file = optarg;
         break;
       case 'm':
         if (max_rand == DEFAULT_MAX_RAND) {
