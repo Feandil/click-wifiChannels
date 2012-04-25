@@ -43,6 +43,7 @@ class ParamBasicOnOff : public ParamModule {
 
     /* Initialize the module */
     int init(const int, char **, const bool, const char**);
+    int init(const char * const, const char * const);
 
     /* Clean the module */
     void clean();
@@ -50,11 +51,24 @@ class ParamBasicOnOff : public ParamModule {
     /* Add input char */
     int addChar(const bool);
 
+    /* This function must not be used at the same time as addChar. Two consecutive addChars calls must not be called with the same bool */
+    int addChars(const bool, uint32_t len);
+
     /* Is-there a 2nd round ? (prepare the module to the potential 2nd round */
     bool nextRound();
 
+    /* Get direct source data */
+    const std::map<uint32_t, uint64_t>* getRawErrorFreeBurstLengthCDF(void) { return &success_length; }
+    const uint64_t getRawErrorFreeBurstNumber(void) { return success_total; }
+    const std::map<uint32_t, uint64_t>* getRawErrorBurstLengthCDF(void) { return &error_length; }
+    const uint64_t getRawErrorBurstNumber(void) { return error_total; }
+    
     /* Finalise the data */
     void finalize(const uint32_t);
+
+    /* Get direct output data */
+    const std::map<uint32_t, uint32_t>* getErrorFreeBurstLengthCDF(void) { return &success_length_final; }
+    const std::map<uint32_t, uint32_t>* getErrorBurstLengthCDF(void) { return &error_length_final; }
 
     /* Output */
     void printBinary();

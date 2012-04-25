@@ -14,6 +14,20 @@ const struct option ParamBasicOnOff::long_options[] = {
 const char * const ParamBasicOnOff::needfiles = "BasicOnOff needs 2 output files on non human-readable output";
 
 int
+ParamBasicOnOff::init(const char * const filename_error, const char * const filename_free)
+{
+  if (filename_error != NULL) {
+    error_filename = filename_error;
+    free_filename = filename_free;
+  }
+  success_total = 0;
+  error_total = 0;
+  current_state = false;
+  length = 0;
+  return 0;
+}
+
+int
 ParamBasicOnOff::init(const int argc, char **argv, const bool human_readable, const char** err)
 {
   int opt;
@@ -43,12 +57,7 @@ ParamBasicOnOff::init(const int argc, char **argv, const bool human_readable, co
     *err = needfiles;
     return -1;
   }
-  
-  success_total = 0;
-  error_total = 0;
-  current_state = false;
-  length = 0;
-  return 0;
+  return init(NULL, NULL);
 }
 
 void
@@ -88,6 +97,30 @@ ParamBasicOnOff::addChar(const bool input)
     }
     current_state = input;
     length = 1;
+  }
+  return 0;
+}
+
+int
+ParamBasicOnOff::addChars(const bool input, const uint32_t len)
+{
+  std::map<uint32_t, uint64_t>::iterator temp;
+  if (input) {
+    temp = success_length.find(len);
+    if (temp == success_length.end()) {
+      success_length.insert(std::pair<uint32_t,uint64_t>(len, 1));
+    } else {
+      ++((*temp).second);
+    }
+    ++success_total;
+  } else {
+    temp = error_length.find(len);
+    if (temp == error_length.end()) {
+      error_length.insert(std::pair<uint32_t,uint64_t>(len, 1));
+    } else {
+      ++((*temp).second);
+    }
+    ++error_total;
   }
   return 0;
 }
