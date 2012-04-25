@@ -55,32 +55,29 @@ ParamBasicMTA::init(const int argc, char **argv, const bool human_readable, cons
     return -1;
   }
   
-  mod = new ParamMarckovChain();
+  markov = new ParamMarckovChain();
+  onoff = new ParamBasicOnOff();
   
   if (k == 0) {
-    *err = mod->knotset;
+    *err = markov->knotset;
     return -1;
   }
   
-  success_total = 0;
-  error_total = 0;
   current_state = false;
   length = 0;
   length_error = 0;
   second_round = false;
   C = 0;
-  mod->init(k, markov_filename);
+  markov->init(k, markov_filename);
+  onoff->init(error_filename, error_filename);
   return 0;
 }
 
 void
 ParamBasicMTA::clean(void)
 {
-  success_length.clear();
-  error_length.clear();
-  success_length_final.clear();
-  error_length_final.clear();
-  mod->clean();
+  onoff->clean();
+  markov->clean();
 }
 
 int
@@ -89,60 +86,34 @@ ParamBasicMTA::addChar(const bool input)
   if (second_round) {
     if (input == current_state) {
       if (!input) {
-        mod->addChar(input);
-        ++length_error;
+        markov->addChar(input);
       }
       ++length;
     } else {
       if (current_state) {
         if (length > C) {
-          std::map<uint32_t, uint64_t>::iterator temp;
           if (length_error != 0) {
-            temp = error_length.find(length_error);
-            if (temp == error_length.end()) {
-              error_length.insert(std::pair<uint32_t,uint64_t>(length_error, 1));
-            } else {
-              ++(temp->second);
-            }
-            ++error_total;
+            onoff->addChars(false, length_error);
           }
           length_error = 0;
-          temp = success_length.find(length);
-          if (temp == success_length.end()) {
-            success_length.insert(std::pair<uint32_t,uint64_t>(length, 1));
-          } else {
-            ++(temp->second);
-          }
-          ++success_total;
+          onoff->addChars(true, length);
         } else {
           uint32_t temp;
           for (temp = 0; temp < length; ++temp) {
-            mod->addChar(true);
+            markov->addChar(true);
           }
           length_error += length;
         }
+        markov->addChar(input);
+      } else {
+        length_error += length;
       }
-      current_state = input;
       length = 1;
     }
-  } else if (input == current_state) {
-    ++length;
   } else {
-    if (length) {
-      std::map<uint32_t, uint64_t>::iterator temp;
-      if (!current_state) {
-        temp = error_length.find(length);
-        if (temp == error_length.end()) {
-          error_length.insert(std::pair<uint32_t,uint64_t>(length, 1));
-        } else {
-          ++(temp->second);
-        }
-        ++error_total;
-      }
-    }
-    current_state = input;
-    length = 1;
+    onoff->addChar(input);
   }
+  current_state = input;
   return 0;
 }
 
@@ -150,14 +121,15 @@ bool
 ParamBasicMTA::nextRound()
 {
   /* Consider the last bit */
-  addChar(!current_state);
+  onoff->addChar(!current_state);
   /* Calculate C */
-  double mean = 0, standard_deviation = 0, temp, total = error_total;
+  double mean = 0, standard_deviation = 0, temp, total = onoff->getRawErrorBurstNumber();;
+  const std::map<uint32_t, uint64_t>* errors = onoff->getRawErrorBurstLengthCDF();
   std::map<uint32_t, uint64_t>::const_iterator it;
-  for (it = error_length.begin(); it != error_length.end(); ++it) {
+  for (it = errors->begin(); it != errors->end(); ++it) {
     mean += ((double) it->first) * ((double) it->second) / total;
   }
-  for (it = error_length.begin(); it != error_length.end(); ++it) {
+  for (it = errors->begin(); it != errors->end(); ++it) {
     temp = ((double) it->first) - mean;
     temp *= temp;
     standard_deviation += temp * ((double) it->second) / total;
@@ -168,94 +140,49 @@ ParamBasicMTA::nextRound()
   }
   C = total;
   /* Clean and start new round */
-  error_length.clear();
+  onoff->clean();
+  onoff->init(NULL, NULL);
   length = 0;
   length_error = 0;
   second_round = true;
   return true;
 }
 
-
-void
-ParamBasicMTA::calculate_values(const uint32_t manx_rand, const std::map<uint32_t, uint64_t> &map, const uint64_t total, std::map<uint32_t, uint32_t> &final)
-{
-  uint64_t temp_total = 0;
-  std::map<uint32_t, uint64_t>::const_iterator it;
-
-  for (it = map.begin(); it != map.end(); ++it) {
-    temp_total += (*it).second;
-    final.insert(std::pair<uint32_t,uint32_t>(it->first, (uint32_t)(((long double) temp_total) / ((long double) total) * ((long double) manx_rand))));
-  }
-}
-
 void
 ParamBasicMTA::finalize(const uint32_t max_rand)
 {
-  calculate_values(max_rand, success_length, success_total, success_length_final);
-  calculate_values(max_rand, error_length, error_total, error_length_final);
-  mod->finalize(max_rand);
-}
-
-
-void
-ParamBasicMTA::printBinaryToFile(const std::map<uint32_t, uint32_t> &map, const char* dest)
-{
-  std::ofstream output;
-  output.open(dest);
-#define WRITE4(x)  if (output.write((char*)x,4).bad())  std::cerr << "error when writing to output(" << dest << ")" <<std::endl;
-  uint32_t size = map.size();
-  WRITE4(&size)
-   
-  std::map<uint32_t, uint32_t>::const_iterator it;
-  for (it = map.begin(); it != map.end(); ++it) {
-    WRITE4(&it->first);
-    WRITE4(&it->second);
+  if (current_state) {
+    if (length > C) {
+      if (length_error != 0) {
+        onoff->addChars(false, length_error);
+      }
+      onoff->addChars(true, length);
+    } else {
+      uint32_t temp;
+      for (temp = 0; temp < length; ++temp) {
+        markov->addChar(true);
+      }
+      length_error += length;
+      onoff->addChars(false, length_error);
+    }
+  } else {
+    length_error += length;
+    onoff->addChars(false, length_error);
   }
-  output.close();
+  onoff->finalize(max_rand);
+  markov->finalize(max_rand);
 }
 
 void
 ParamBasicMTA::printBinary(void)
 {
-  printBinaryToFile(success_length_final, free_filename);
-  printBinaryToFile(error_length_final, error_filename);
-  mod->printBinary();
-}
-
-void
-ParamBasicMTA::printHumanToStream(const uint32_t max_rand, const std::map<uint32_t, uint32_t> &map, std::ostream &streamout)
-{
-  streamout << "(MaxRand: " << max_rand << ")" << std::endl;
-  streamout << "CDF size: " << map.size() << std::endl;
-
-  std::map<uint32_t, uint32_t>::const_iterator it;
-  for (it = map.begin(); it != map.end(); ++it) {
-    streamout << "- " << it->first << ": " << it->second << " (" << ((long double)it->second/((long double) max_rand))*100 << "%)" << std::endl;
-  }
+  onoff->printBinary();
+  markov->printBinary();
 }
 
 void
 ParamBasicMTA::printHuman(const uint32_t max_rand)
 {
-  std::ofstream output;
-  
-  if (free_filename == NULL ) {
-    std::cout << "Error-Free-Burst length cdf" << std::endl;
-    printHumanToStream(max_rand, success_length_final, std::cout);
-    std::cout << std::endl;
-  } else {
-    output.open(free_filename);
-    printHumanToStream(max_rand, success_length_final, output);
-    output.close();
-  }
-  if (error_filename == NULL ) {
-    std::cout << "Error-Burst length cdf" << std::endl;
-    printHumanToStream(max_rand, error_length_final, std::cout);
-    std::cout << std::endl;
-  } else {
-    output.open(error_filename);
-    printHumanToStream(max_rand, error_length_final, output);
-    output.close();
-  }
-  mod->printHuman(max_rand);
+  onoff->printHuman(max_rand);
+  markov->printHuman(max_rand);
 }
