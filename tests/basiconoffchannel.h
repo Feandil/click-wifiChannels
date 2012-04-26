@@ -39,6 +39,10 @@ class BasicOnOffChannel : public TestModule {
   
     TestRandom myRand;
     
+    /* Configuration parsing */
+    static const char * const needfiles;
+    static const struct option long_options[];
+    
   public:
 
     /* Configure the Element */

@@ -5,9 +5,7 @@
 #include <stdlib.h>
 #include <getopt.h>
 
-const char *markovunknownOption = "An unknown option was passed to the Module";
-const char *markovtooMuchOption = "Too much option where passed to the module";
-const char *markovneedfiles  = "BasicOnOff needs 2 intput files";
+const char * const MarkovChainChannel::needfiles = "MarckChain needs 1 intput files";
 
 int
 MarkovChainChannel::configure(const int argc, char **argv, const char** err)
@@ -20,20 +18,20 @@ MarkovChainChannel::configure(const int argc, char **argv, const char** err)
         _current_state = atoi(optarg);
         break;
       default:
-        *err = markovunknownOption;
+        *err = unknownOption;
         return opt;
     }
   }
   
   if(argc <= optind) {
-    *err = markovneedfiles;
+    *err = needfiles;
     return -1;
   }
   
   filename = argv[optind];
   
   if (argc > optind + 1) {
-    *err = markovtooMuchOption;
+    *err = tooMuchOption;
     return -2;
   }
   

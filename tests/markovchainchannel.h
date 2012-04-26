@@ -14,13 +14,16 @@ class MarkovChainChannel : public TestModule {
 
     /* FileDescriptor */
     const char* filename;
-   
+
     /* Current state description */
     uint32_t _current_state;
     uint32_t _state_modulo;
- 
+
     TestRandom myRand;
- 
+
+    /* Cnfiguration */
+    static const char * const needfiles;
+
   public:
 
     /* Configure the Element */

@@ -20,6 +20,13 @@ class TestRandom {
 };
 
 class TestModule {
+
+  protected:
+
+    /* common error messages */
+    static const char * const unknownOption;
+    static const char * const tooMuchOption;
+
   public:
 
     /* Configure the Element */

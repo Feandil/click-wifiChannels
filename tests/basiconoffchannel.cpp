@@ -4,15 +4,14 @@
 #include <limits.h>
 #include <getopt.h>
 
-const struct option basiconoff_long_options[] = {
+const struct option BasicOnOffChannel::long_options[] = {
   {"free",        required_argument, 0,  'f' },
   {"err",         required_argument, 0,  'r' },
   {NULL,                          0, 0,   0  }
 };
 
-const char *basicunknownOption = "An unknown option was passed to the Module";
-const char *basictooMuchOption = "Too much option where passed to the module";
-const char *basicneedfiles  = "BasicOnOff needs 2 intput files";
+
+const char * const BasicOnOffChannel::needfiles  = "BasicOnOff needs 2 intput files";
 
 int
 BasicOnOffChannel::thresholdrand (const std::vector<CDFPoint> &distribution)
@@ -49,7 +48,7 @@ BasicOnOffChannel::configure(const int argc, char **argv, const char** err)
   optind = 1;
   _error_free_cdf_filename = NULL;
   _error_cdf_filename = NULL;
-  while((opt = getopt_long(argc, argv, "", basiconoff_long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "", long_options, NULL)) != -1) {
     switch(opt) {
       case 'f':
         _error_free_cdf_filename = optarg;
@@ -58,18 +57,18 @@ BasicOnOffChannel::configure(const int argc, char **argv, const char** err)
         _error_cdf_filename = optarg;
         break;
       default:
-        *err = basicunknownOption;
+        *err = unknownOption;
         return opt;
     }
   }
   
   if(argc > optind) {
-    *err = basictooMuchOption;
+    *err = tooMuchOption;
     return argc;
   }
   
   if ((_error_free_cdf_filename == NULL) || (_error_cdf_filename == NULL)) {
-    *err = basicneedfiles;
+    *err = needfiles;
     return -1;
   }
 

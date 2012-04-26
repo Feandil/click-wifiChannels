@@ -11,6 +11,9 @@
 #include "markovchainchannel.h"
 #include "basiconoffchannel.h"
 
+const char * const TestModule::unknownOption = "An unknown option was passed to the Module";
+const char * const TestModule::tooMuchOption = "Too much option where passed to the module";
+
 TestRandom::TestRandom(uint32_t max)
 {
   mod = (max + 1);
