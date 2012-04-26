@@ -69,7 +69,7 @@ ParamBasicMTA::init(const int argc, char **argv, const bool human_readable, cons
   second_round = false;
   C = 0;
   markov->init(k, markov_filename);
-  onoff->init(error_filename, error_filename);
+  onoff->init(error_filename, free_filename);
   return 0;
 }
 
