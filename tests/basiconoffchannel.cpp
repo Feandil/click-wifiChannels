@@ -34,6 +34,7 @@ BasicOnOffChannel::thresholdrand (const std::vector<CDFPoint> &distribution)
       pos = min + (max - min) / 2;
     }
   }
+
   if (rand > distribution[min].probability) {
     return distribution[max].point;
   } else {
@@ -134,13 +135,11 @@ BasicOnOffChannel::initialize(TestRandom& rand)
 {
   myRand = rand;
 
-  load_cdf_from_file(_error_cdf_filename, _error_burst_length);
-  load_cdf_from_file(_error_free_cdf_filename, _error_free_burst_length);
-  
   /* Initialize state */
   _remaining_length_in_state = 0;
   _current_state = myRand.random() < _initial_error_probability;
-  return 0;
+
+  return (load_cdf_from_file(_error_cdf_filename, _error_burst_length) || load_cdf_from_file(_error_free_cdf_filename, _error_free_burst_length));
 }
 
 void

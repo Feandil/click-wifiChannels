@@ -25,8 +25,8 @@ class BasicOnOffChannel : public TestModule {
   
     const char *_error_cdf_filename;
     const char *_error_free_cdf_filename;
-	
-	  /* Load a CDF for a file */
+  
+    /* Load a CDF for a file */
     int load_cdf_from_file(const char *, std::vector<CDFPoint>&);
 
     /* Generate a random number from a Cumulative distribution functions */

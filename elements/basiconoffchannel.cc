@@ -112,13 +112,10 @@ BasicOnOffChannel::load_cdf_from_file(const String filename, ErrorHandler *errh,
 int
 BasicOnOffChannel::initialize(ErrorHandler *errh)
 {
-  load_cdf_from_file(_error_cdf_filename, errh, _error_burst_length);
-  load_cdf_from_file(_error_free_cdf_filename, errh, _error_free_burst_length);
-  
   /* Initialize state */
   _remaining_length_in_state = 0;
   _current_state = click_random() < _initial_error_probability;
-  return 0;
+  return (load_cdf_from_file(_error_cdf_filename, errh, _error_burst_length) || load_cdf_from_file(_error_free_cdf_filename, errh, _error_free_burst_length));
 }
 
 void
