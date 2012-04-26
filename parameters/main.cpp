@@ -46,11 +46,8 @@ static const struct option long_options[] = {
 };
 
 #include "markovchain.h"
-static const char markovChain[] = "markovchain";
 #include "basiconoff.h"
-static const char basicOnOff[]  = "basiconoff";
 #include "basicmta.h"
-static const char basicMTA[]  = "basicmta";
 
 static int extract(std::istream *in, ParamModule *mod)
 {
@@ -120,11 +117,11 @@ int main(int argc, char *argv[])
     usage(1);
     return 1;
   } else {
-    if (strcmp(argv[optind], markovChain) == 0) {
+    if (strcmp(argv[optind], ParamMarckovChain::name()) == 0) {
       mod = new ParamMarckovChain();
-    } else if (strcmp(argv[optind], basicOnOff) == 0) {
+    } else if (strcmp(argv[optind], ParamBasicOnOff::name()) == 0) {
       mod = new ParamBasicOnOff();
-    } else if (strcmp(argv[optind], basicMTA) == 0) {
+    } else if (strcmp(argv[optind], ParamBasicMTA::name()) == 0) {
       mod = new ParamBasicMTA();
     } else {
       std::cerr << "Unknown Module" << std::endl;

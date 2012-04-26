@@ -73,6 +73,9 @@ class ParamBasicOnOff : public ParamModule {
     /* Output */
     void printBinary();
     void printHuman(const uint32_t);
+
+    /* name */
+    static const char* name() { return "basiconoff"; }
 };
 
 #endif

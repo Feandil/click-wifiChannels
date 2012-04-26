@@ -68,17 +68,13 @@ int main(int argc, char *argv[])
     std::cerr << "Missing module name" << std::endl;
     return argc;
   }
-  
-  const char markovChain[] = "markovchain";
-  const char basicOnOff[]  = "basiconoff";
-  const char basicMTA[]  = "basicmta";
 
   TestModule *m;
-  if (strcmp(argv[optind], markovChain) == 0) {
+  if (strcmp(argv[optind], MarkovChainChannel::name()) == 0) {
     m = new MarkovChainChannel();
-  } else if (strcmp(argv[optind], basicOnOff) == 0) {
+  } else if (strcmp(argv[optind], BasicOnOffChannel::name()) == 0) {
     m = new BasicOnOffChannel();
-  } else if (strcmp(argv[optind], basicMTA) == 0) {
+  } else if (strcmp(argv[optind], BasicMTAChannel::name()) == 0) {
     m = new BasicMTAChannel();
   } else {
     std::cerr << "Unknown Module" << std::endl;

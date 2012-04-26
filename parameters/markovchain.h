@@ -37,6 +37,9 @@ class ParamMarckovChain : public ParamModule {
     
     /* Error String */
     static const char * const knotset;
+
+    /* name */
+    static const char* name() { return "markovchain"; }
 };
 
 #endif

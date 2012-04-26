@@ -55,6 +55,9 @@ class BasicOnOffChannel : public TestModule {
 
     /* receive packet from above */
     int generate();
+
+    /* name */
+    static const char* name() { return "basiconoff"; }
 };
 
 #endif

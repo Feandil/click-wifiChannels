@@ -36,6 +36,9 @@ class MarkovChainChannel : public TestModule {
 
     /* generate packet */
     int generate();
+
+    /* name */
+    static const char* name() { return "markovchain"; }
 };
 
 #endif

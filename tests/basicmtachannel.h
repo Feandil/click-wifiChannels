@@ -27,6 +27,9 @@ class BasicMTAChannel : public TestModule {
 
     /* receive packet from above */
     int generate();
+
+    /* name */
+    static const char* name() { return "basicmta"; }
 };
 
 #endif
