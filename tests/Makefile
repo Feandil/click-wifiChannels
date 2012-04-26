@@ -2,7 +2,7 @@ CXXFLAGS=-pipe -O2 -g -Wall -Werror -Wchar-subscripts -Wundef -Wshadow -Wwrite-s
 
 all: generateTest
 
-generateTest: basiconoffchannel.o markovchainchannel.o utils.o
+generateTest: basiconoffchannel.o markovchainchannel.o basicmtachannel.o utils.o
 	$(LINK.cpp) $^ $(LOADLIBES) $(LDLIBS) -o $@
   
 clean:

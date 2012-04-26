@@ -21,13 +21,14 @@ class MarkovChainChannel : public TestModule {
 
     TestRandom myRand;
 
-    /* Cnfiguration */
+    /* Configuration */
     static const char * const needfiles;
 
   public:
 
     /* Configure the Element */
     int configure(const int, char **, const char**);
+    void configure(const char * const, const int);
 
     /* Initialize/cleanup the Element, called after the configure */
     int initialize(TestRandom&);

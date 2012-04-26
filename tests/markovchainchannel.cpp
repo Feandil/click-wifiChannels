@@ -38,6 +38,13 @@ MarkovChainChannel::configure(const int argc, char **argv, const char** err)
   return 0;
 }
 
+void
+MarkovChainChannel::configure(const char * const file, const int i)
+{
+  filename = file;
+  _current_state = i;
+}
+
 int
 MarkovChainChannel::initialize(TestRandom& rand)
 {

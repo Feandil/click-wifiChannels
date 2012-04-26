@@ -10,6 +10,7 @@
 
 #include "markovchainchannel.h"
 #include "basiconoffchannel.h"
+#include "basicmtachannel.h"
 
 const char * const TestModule::unknownOption = "An unknown option was passed to the Module";
 const char * const TestModule::tooMuchOption = "Too much option where passed to the module";
@@ -70,12 +71,15 @@ int main(int argc, char *argv[])
   
   const char markovChain[] = "markovchain";
   const char basicOnOff[]  = "basiconoff";
+  const char basicMTA[]  = "basicmta";
 
   TestModule *m;
   if (strcmp(argv[optind], markovChain) == 0) {
     m = new MarkovChainChannel();
   } else if (strcmp(argv[optind], basicOnOff) == 0) {
     m = new BasicOnOffChannel();
+  } else if (strcmp(argv[optind], basicMTA) == 0) {
+    m = new BasicMTAChannel();
   } else {
     std::cerr << "Unknown Module" << std::endl;
     return -1;

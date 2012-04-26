@@ -75,6 +75,13 @@ BasicOnOffChannel::configure(const int argc, char **argv, const char** err)
   return 0;
 }
 
+void
+BasicOnOffChannel::configure(const char * const free, const char * const err)
+{
+  _error_free_cdf_filename = free;
+  _error_cdf_filename = err;
+}
+
 int
 BasicOnOffChannel::load_cdf_from_file(const char *filename, std::vector<CDFPoint> &dist)
 {

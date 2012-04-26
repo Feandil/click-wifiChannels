@@ -47,6 +47,7 @@ class BasicOnOffChannel : public TestModule {
 
     /* Configure the Element */
     int configure(const int, char **, const char**);
+    void configure(const char * const, const char * const);
 
     /* Initialize/cleanup the Element, called after the configure */
     int initialize(TestRandom&);
