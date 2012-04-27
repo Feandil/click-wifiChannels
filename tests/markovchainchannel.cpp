@@ -3,26 +3,15 @@
 #include <fstream>
 #include <stdio.h>
 #include <stdlib.h>
-#include <getopt.h>
+#include <inttypes.h>
 
 const char * const MarkovChainChannel::needfiles = "MarckChain needs 1 intput files";
 
 int
 MarkovChainChannel::configure(const int argc, char **argv, const char** err)
 {
-  int opt;
   optind = 1;
-  while((opt = getopt(argc, argv, "i:")) != -1) {
-    switch(opt) {
-      case 'i':
-        _current_state = atoi(optarg);
-        break;
-      default:
-        *err = unknownOption;
-        return opt;
-    }
-  }
-  
+
   if(argc <= optind) {
     *err = needfiles;
     return -1;
@@ -39,10 +28,9 @@ MarkovChainChannel::configure(const int argc, char **argv, const char** err)
 }
 
 void
-MarkovChainChannel::configure(const char * const file, const int i)
+MarkovChainChannel::configure(const char * const file)
 {
   filename = file;
-  _current_state = i;
 }
 
 int
@@ -50,7 +38,8 @@ MarkovChainChannel::initialize(TestRandom& rand)
 {
   myRand = rand;
 
-  #define UINT32_SIZE 4
+  #define UINT32_SIZE_IN_DEC 10
+  char buf[UINT32_SIZE_IN_DEC + 1];
   uint32_t buffer;
   uint32_t len;
   
@@ -59,18 +48,26 @@ MarkovChainChannel::initialize(TestRandom& rand)
   if (ff.fail()) {
     return -1;
   }
-  ff.read((char*)&len, UINT32_SIZE); 
+  ff.getline(buf, UINT32_SIZE_IN_DEC + 1);
+  if (ff.fail() || (sscanf(buf, "%"SCNu32, &len) != 1)) {
+    return -2;
+  }
   
   _success_probablilty.reserve(len);
   _state_modulo = len;
   
+  ff.getline(buf, UINT32_SIZE_IN_DEC + 1);
+  if (ff.fail() || (sscanf(buf, "%"SCNu32, &_current_state) != 1)) {
+    return -3;
+  }
+  
   while (len != 0) {
     --len;
-    ff.read((char*)&buffer, UINT32_SIZE);  
-    if (ff.fail()) {
+    ff.getline(buf, UINT32_SIZE_IN_DEC + 1);
+    if (ff.fail() || (sscanf(buf, "%"SCNu32, &buffer) != 1)) {
       ff.close();
       _success_probablilty.clear();
-      return -3;
+      return -4;
     }
     _success_probablilty.push_back(buffer);
   }

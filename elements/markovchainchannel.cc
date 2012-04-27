@@ -2,6 +2,7 @@
 #include <click/args.hh>
 #include <click/error.hh>
 #include <click/glue.hh>
+#include <click/confparse.hh>
 
 #include "markovchainchannel.hh"
 
@@ -19,14 +20,12 @@ MarkovChainChannel::configure(Vector<String> &conf, ErrorHandler *errh)
 #if CLICK_USERLEVEL || CLICK_TOOL
   if (Args(conf, this, errh)
       .read_m("FILENAME", FilenameArg(), _ff.filename())
-      .read_m("INITIAL_STATE", _current_state)
       .complete() < 0) {
     return -1;
   }
 #else
   if (Args(conf, this, errh)
       .read_m("FILENAME", _ff.filename())
-      .read_m("INITIAL_STATE", _current_state)
       .complete() < 0) {
     return -1;
   }
@@ -38,23 +37,35 @@ int
 MarkovChainChannel::initialize(ErrorHandler *errh)
 {
   #define UINT32_SIZE 4
+  String in;
   uint32_t buffer;
   uint32_t len;
   
   if (_ff.initialize(errh) < 0) {
+    errh->error("MarkovChain input file unreadable");
     return -1;
   }
   
-  if (_ff.read(&len, UINT32_SIZE, errh) != UINT32_SIZE) {
+  if ((_ff.read_line(in, errh) <= 0) || (cp_integer(in.begin(), in.end() - 1, 10, &len) != in.end() - 1)) {
+    errh->error("MarkovChain input file error : bad input (reading length)");
     _ff.cleanup();
     return -2;
   }
+  
   _success_probablilty.reserve(len);
   _state_modulo = len;
-  
+
+  if ((_ff.read_line(in, errh) <= 0) || (cp_integer(in.begin(), in.end() - 1, 10, &_current_state) != in.end() - 1)) {
+    errh->error("MarkovChain input file error : bad input (reading initial state)");
+    _ff.cleanup();
+    return -2;
+  }
+  _current_state %= _state_modulo;
+
   while (len != 0) {
     --len;
-    if (_ff.read(&buffer, UINT32_SIZE, errh) != UINT32_SIZE) {
+    if ((_ff.read_line(in, errh) <= 0) || (cp_integer(in.begin(), in.end() - 1, 10, &buffer) != in.end() - 1)) {
+       errh->error("MarkovChain input file error : bad input");
       _ff.cleanup();
       _success_probablilty.clear();
       return -3;

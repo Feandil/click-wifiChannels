@@ -114,15 +114,20 @@ ParamMarckovChain::printBinary()
     output = output_f;
   }
   uint32_t temp;
-#define WRITE4(x)  if (output->write((char*)(x),4).bad()) { std::cerr << "error when writing to output" <<std::endl; exit (-1); }
-   WRITE4(&state_mod)
+#define WRITE(x)                                             \
+  *output << x << std::endl;                                 \
+  if (output->bad()) {                                       \
+    std::cerr << "error when writing to output" <<std::endl; \
+    exit (-1);;                                              \
+  }
+  WRITE(state_mod)
+  WRITE(state)
   for (temp = 0; temp < state_mod; ++temp) {
-    WRITE4(transitions + temp)
+    WRITE(transitions[temp])
   }
   if (output_f != NULL ) {
     output_f->close();
   }
-  std::cout << "Most probable state : 0x" << std::hex << state << std::endl;
 }
 
 void

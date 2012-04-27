@@ -21,8 +21,7 @@ BasicMTAChannel::configure(const int argc, char **argv, const char** err)
   char *onoff_free = NULL;
   char *onoff_err = NULL;
   char *markov_file = NULL;
-  int i = 1;
-  while((opt = getopt_long(argc, argv, "i:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "", long_options, NULL)) != -1) {
     switch(opt) {
       case 'f':
         onoff_free = optarg;
@@ -32,9 +31,6 @@ BasicMTAChannel::configure(const int argc, char **argv, const char** err)
         break;
       case 'm':
         markov_file = optarg;
-        break;
-      case 'i':
-        i = atoi(optarg);
         break;
       default:
         *err = unknownOption;
@@ -52,7 +48,7 @@ BasicMTAChannel::configure(const int argc, char **argv, const char** err)
     return -1;
   }
 
-  markov.configure(markov_file, i);
+  markov.configure(markov_file);
   onoff.configure(onoff_free, onoff_err);
   return 0;
 }
