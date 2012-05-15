@@ -36,7 +36,6 @@ MarkovChainChannel::configure(Vector<String> &conf, ErrorHandler *errh)
 int
 MarkovChainChannel::initialize(ErrorHandler *errh)
 {
-  #define UINT32_SIZE 4
   String in;
   uint32_t buffer;
   uint32_t len;

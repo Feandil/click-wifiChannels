@@ -3,6 +3,7 @@
 #include <fstream>
 #include <limits.h>
 #include <getopt.h>
+#include <inttypes.h>
 
 const struct option BasicOnOffChannel::long_options[] = {
   {"free",        required_argument, 0,  'f' },
@@ -86,7 +87,8 @@ BasicOnOffChannel::configure(const char * const free, const char * const err)
 int
 BasicOnOffChannel::load_cdf_from_file(const char *filename, std::vector<CDFPoint> &dist)
 {
-#define UINT32_SIZE 4
+  #define UINT32_SIZE_IN_DEC 10
+  char buf[UINT32_SIZE_IN_DEC + 1];
   uint32_t buffer;
   uint32_t len;
   CDFPoint point;
@@ -96,8 +98,8 @@ BasicOnOffChannel::load_cdf_from_file(const char *filename, std::vector<CDFPoint
   if (ff.fail()) {
     return -1;
   }
-  ff.read((char*)&len, UINT32_SIZE);  
-  if (ff.fail()) {
+  ff.getline(buf, UINT32_SIZE_IN_DEC + 1);
+  if (ff.fail() || (sscanf(buf, "%"SCNu32, &len) != 1)) {
     ff.close();
     return -2;
   }
@@ -105,8 +107,8 @@ BasicOnOffChannel::load_cdf_from_file(const char *filename, std::vector<CDFPoint
   
   while (len != 0) {
     --len;
-    ff.read((char*)&buffer, UINT32_SIZE);  
-    if (ff.fail()) {
+    ff.getline(buf, UINT32_SIZE_IN_DEC + 1);
+    if (ff.fail() || (sscanf(buf, "%"SCNu32, &buffer) != 1)) {
       ff.close();
       dist.clear();
       return -3;
@@ -117,8 +119,8 @@ BasicOnOffChannel::load_cdf_from_file(const char *filename, std::vector<CDFPoint
       return -4;
     }
     point.point = (int) buffer;
-    ff.read((char*)&buffer, UINT32_SIZE);  
-    if (ff.fail()) {
+    ff.getline(buf, UINT32_SIZE_IN_DEC + 1);
+    if (ff.fail() || (sscanf(buf, "%"SCNu32, &buffer) != 1)) {
       ff.close();;
       dist.clear();
       return -5;

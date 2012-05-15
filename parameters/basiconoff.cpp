@@ -158,14 +158,19 @@ ParamBasicOnOff::printBinaryToFile(const std::map<uint32_t, uint32_t> &map, cons
 {
   std::ofstream output;
   output.open(dest);
-#define WRITE4(x)  if (output.write((char*)x,4).bad())  std::cerr << "error when writing to output(" << dest << ")" <<std::endl;
+#define WRITE(x)                                             \
+  output << x << std::endl;                                  \
+  if (output.bad()) {                                        \
+    std::cerr << "error when writing to output" <<std::endl; \
+    exit (-1);;                                              \
+  }
   uint32_t size = map.size();
-  WRITE4(&size)
+  WRITE(size)
    
   std::map<uint32_t, uint32_t>::const_iterator it;
   for (it = map.begin(); it != map.end(); ++it) {
-    WRITE4(&it->first);
-    WRITE4(&it->second);
+    WRITE(it->first);
+    WRITE(it->second);
   }
   output.close();
 }

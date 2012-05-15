@@ -68,17 +68,19 @@ BasicOnOffChannel::configure(Vector<String> &conf, ErrorHandler *errh)
 int
 BasicOnOffChannel::load_cdf_from_file(const String filename, ErrorHandler *errh, Vector<CDFPoint> &dist)
 {
-#define UINT32_SIZE 4
+  String in;
   uint32_t buffer;
   uint32_t len;
   CDFPoint point;
-  
+
   _ff.filename() = filename;
   if (_ff.initialize(errh) < 0) {
+    errh->error("BasicOnOff input file unreadable");
     return -1;
   }
-  
-  if (_ff.read(&len, UINT32_SIZE, errh) != UINT32_SIZE) {
+
+  if ((_ff.read_line(in, errh) <= 0) || (cp_integer(in.begin(), in.end() - 1, 10, &len) != in.end() - 1)) {
+    errh->error("BasicOnOff input file error : bad input (reading length)");
     _ff.cleanup();
     return -2;
   }
@@ -86,18 +88,21 @@ BasicOnOffChannel::load_cdf_from_file(const String filename, ErrorHandler *errh,
   
   while (len != 0) {
     --len;
-    if (_ff.read(&buffer, UINT32_SIZE, errh) != UINT32_SIZE) {
+    if ((_ff.read_line(in, errh) <= 0) || (cp_integer(in.begin(), in.end() - 1, 10, &buffer) != in.end() - 1)) {
+      errh->error("BasicOnOff input file error : bad input (unable to read 1)");
       _ff.cleanup();
       dist.clear();
       return -3;
     }
     if (buffer > INT_MAX) {
+      errh->error("BasicOnOff input file error : bad input (too large unsigned)");
       _ff.cleanup();
       dist.clear();
       return -4;
     }
     point.point = (int) buffer;
-    if (_ff.read(&buffer, UINT32_SIZE, errh) != UINT32_SIZE) {
+    if ((_ff.read_line(in, errh) <= 0) || (cp_integer(in.begin(), in.end() - 1, 10, &buffer) != in.end() - 1)) {
+      errh->error("BasicOnOff input file error : bad input (unable to read 2)");
       _ff.cleanup();
       dist.clear();
       return -5;
