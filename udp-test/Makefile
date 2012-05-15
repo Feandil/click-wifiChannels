@@ -6,7 +6,7 @@ LDLIBS+=-levent
 all: server client
 
 server: server.o
-	$(LINK.cpp) $^ $(LOADLIBES) $(LDLIBS) -o $@
+	$(LINK.cpp) $^ $(LOADLIBES) $(LDLIBS) -lz -o $@
 
 client: client.o
 	$(LINK.cpp) $^ $(LOADLIBES) $(LDLIBS) -lrt -o $@
