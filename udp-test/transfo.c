@@ -52,6 +52,7 @@ inline static void extract(const char* incoming, const uInt len) {
     PRINTF("Bad input\n")
     exit(1);
   }
+  assert(count <= max);
   if (count == 0) {
     count = max;
     return;

@@ -76,7 +76,7 @@ static void end_data(struct udp_io_t* in) {
       in->strm.avail_out = OUT_BUF_SIZE;
       in->strm.next_out = (Bytef*)in->out;
     }
-    ret = deflate(&in->strm, Z_FULL_FLUSH);
+    ret = deflate(&in->strm, Z_FINISH);
     assert(ret != Z_STREAM_ERROR);
   } while (in->strm.avail_out != OUT_BUF_SIZE);
   (void)deflateEnd(&in->strm);
