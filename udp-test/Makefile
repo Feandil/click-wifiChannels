@@ -1,18 +1,19 @@
 CFLAGS?=-pipe -O2 -g -Wall -Werror -Wchar-subscripts -Wundef -Wshadow -Wwrite-strings -Wsign-compare -Wunused -Wno-unused-parameter -Wuninitialized -Winit-self -Wpointer-arith -Wredundant-decls \
 -Wformat-nonliteral -Wno-format-zero-length -Wno-format-y2k -Wmissing-format-attribute -Wsequence-point -Wparentheses -Wmissing-declarations
 
-LDLIBS+=-levent
-
-all: server client
+all: server client transfo
 
 server: server.o
-	$(LINK.cpp) $^ $(LOADLIBES) $(LDLIBS) -lz -o $@
+	$(LINK.cpp) $^ $(LOADLIBES) $(LDLIBS) -levent -lz -o $@
 
 client: client.o
-	$(LINK.cpp) $^ $(LOADLIBES) $(LDLIBS) -lrt -o $@
+	$(LINK.cpp) $^ $(LOADLIBES) $(LDLIBS) -levent -lrt -o $@
 
+transfo: transfo.o
+	$(LINK.cpp) $^ $(LOADLIBES) $(LDLIBS) -lz -o $@
 
 clean:
 	-rm *.o
 	-rm server
 	-rm client
+	-rm transfo
