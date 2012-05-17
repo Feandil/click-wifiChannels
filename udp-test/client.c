@@ -65,7 +65,7 @@ static void event_cb(int fd, short event, void *arg) {
   event_add(in->event, &in->delay);
 }
 
-static struct event* init(struct event_base* base, in_port_t port, struct in_addr *addr, struct timeval *delay) {
+static struct event* init(struct event_base* base, in_port_t port, struct in_addr *addr, struct timeval *delay, const uint64_t count) {
   struct udp_io_t* buffer;
 
   /* Create buffer */
@@ -82,6 +82,7 @@ static struct event* init(struct event_base* base, in_port_t port, struct in_add
     return NULL;
   }
 
+  buffer->count = count;
   buffer->addr.sin_family = AF_INET;
   buffer->addr.sin_port   = htons(port);
   memcpy(&buffer->delay, delay, sizeof(struct timeval));
@@ -108,6 +109,7 @@ static void down(int sig)
 #define DEFAULT_ADDRESS "127.0.0.1"
 #define DEFAULT_TIME_SECOND 0
 #define DEFAULT_TIME_NANOSECOND 100000
+#define DEFAULT_COUNT 0
 
 static void usage(int err)
 {
@@ -119,6 +121,7 @@ static void usage(int err)
   printf(" -p, --port   <port>  Specify the destination port (default : %"PRIu16" )\n", DEFAULT_PORT);
   printf(" -s, --sec    <sec>   Specify the interval in second between two send (default : %i )\n", DEFAULT_TIME_SECOND);
   printf(" -n, --nsec   <nsec>  Specify the interval in nanosecond between two send destination port (default : %i )\n", DEFAULT_TIME_NANOSECOND);
+  printf(" -c, --count  <uint>  Specify the starting count of the outgoing packets (default : %i )\n", DEFAULT_COUNT);
   exit(err);
 }
 
@@ -128,6 +131,7 @@ static const struct option long_options[] = {
   {"port",        required_argument, 0,  'p' },
   {"sec",         required_argument, 0,  's' },
   {"nsec",        required_argument, 0,  'n' },
+  {"count",       required_argument, 0,  'c' },
   {NULL,                          0, 0,   0  }
 };
 
@@ -139,8 +143,9 @@ int main(int argc, char *argv[]) {
   struct timeval delay;
   delay.tv_sec = DEFAULT_TIME_SECOND;
   delay.tv_usec = DEFAULT_TIME_NANOSECOND;
+  uint64_t count = DEFAULT_COUNT;
 
-  while((opt = getopt_long(argc, argv, "hd:p:s:n:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "hd:p:s:n:c:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0);
@@ -165,6 +170,12 @@ int main(int argc, char *argv[]) {
           usage(1);
         }
         sscanf(optarg, "%li", &delay.tv_usec);
+        break;
+      case 'c':
+        if (count != DEFAULT_COUNT) {
+          usage(1);
+        }
+        sscanf(optarg, "%"SCNu64, &count);
         break;
       default:
         usage(1);
@@ -194,7 +205,7 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  glisten = init(gbase, port, &addr, &delay);
+  glisten = init(gbase, port, &addr, &delay, count);
   if (glisten == NULL) {
     PRINTF("Unable to create listening event (libevent)\n")
     return -2;
