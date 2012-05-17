@@ -1,13 +1,15 @@
 #include <assert.h>
 #include <arpa/inet.h>
-#include <inttypes.h>
 #include <event.h>
 #include <getopt.h>
+#include <inttypes.h>
+#include <net/if.h>
 #include <netinet/in.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <time.h>
@@ -71,8 +73,9 @@ static void event_cb(int fd, short event, void *arg) {
   event_add(in->event, &in->delay);
 }
 
-static struct event* init(struct event_base* base, in_port_t port, struct in_addr *addr, struct timeval *delay, const uint64_t count, const int size) {
+static struct event* init(struct event_base* base, in_port_t port, struct in_addr *addr, struct timeval *delay, const uint64_t count, const int size, const char* interface) {
   struct udp_io_t* buffer;
+  struct ifreq iface;
 
   /* Create buffer */
   buffer = (struct udp_io_t *)malloc(sizeof(struct udp_io_t));
@@ -86,6 +89,21 @@ static struct event* init(struct event_base* base, in_port_t port, struct in_add
   if ((buffer->fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
     PERROR("socket")
     return NULL;
+  }
+
+  if (interface != NULL) {
+    strncpy(iface.ifr_name, interface, IF_NAMESIZE - 1);
+    iface.ifr_addr.sa_family = AF_INET;
+    if (ioctl(buffer->fd, SIOCGIFADDR , &iface) == -1) {
+      PERROR("ioctl")
+      return NULL;
+    }
+    assert(iface.ifr_addr.sa_family == AF_INET);
+    ((struct sockaddr_in*)&iface.ifr_addr)->sin_port = 0;
+    if (bind(buffer->fd, &iface.ifr_addr, sizeof(struct sockaddr_in)) < 0) {
+      PERROR("bind()")
+      return NULL;
+    }
   }
 
   buffer->count = count;
@@ -131,6 +149,7 @@ static void usage(int err)
   printf(" -n, --nsec   <nsec>  Specify the interval in nanosecond between two send destination port (default : %i )\n", DEFAULT_TIME_NANOSECOND);
   printf(" -c, --count  <uint>  Specify the starting count of the outgoing packets (default : %i )\n", DEFAULT_COUNT);
   printf(" -l, --size   <size>  Specify the size of outgoing packets (default : %i )\n", DEFAULT_SIZE);
+  printf(" -b, --bind   <name>  Specify the interface to bind one (default : no bind)\n");
   exit(err);
 }
 
@@ -142,12 +161,14 @@ static const struct option long_options[] = {
   {"nsec",        required_argument, 0,  'n' },
   {"count",       required_argument, 0,  'c' },
   {"size",        required_argument, 0,  'l' },
+  {"bind",        required_argument, 0,  'b' },
   {NULL,                          0, 0,   0  }
 };
 
 int main(int argc, char *argv[]) {
   int opt;
   char *addr_s = NULL;
+  char *interface = NULL;
   in_port_t port = DEFAULT_PORT;
   struct in_addr addr;
   struct timeval delay;
@@ -156,7 +177,7 @@ int main(int argc, char *argv[]) {
   uint64_t count = DEFAULT_COUNT;
   int size = DEFAULT_SIZE;
 
-  while((opt = getopt_long(argc, argv, "hd:p:s:n:c:l:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "hd:p:s:n:c:l:b:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0);
@@ -194,6 +215,9 @@ int main(int argc, char *argv[]) {
         }
         sscanf(optarg, "%i", &size);
         break;
+      case 'b':
+        interface = optarg;
+        break;
       default:
         usage(1);
         break;
@@ -222,7 +246,7 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  glisten = init(gbase, port, &addr, &delay, count, size);
+  glisten = init(gbase, port, &addr, &delay, count, size, interface);
   if (glisten == NULL) {
     PRINTF("Unable to create listening event (libevent)\n")
     return -2;
