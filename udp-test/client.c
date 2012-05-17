@@ -76,6 +76,7 @@ static void event_cb(int fd, short event, void *arg) {
 static struct event* init(struct event_base* base, in_port_t port, struct in_addr *addr, struct timeval *delay, const uint64_t count, const int size, const char* interface) {
   struct udp_io_t* buffer;
   struct ifreq iface;
+  int tmp;
 
   /* Create buffer */
   buffer = (struct udp_io_t *)malloc(sizeof(struct udp_io_t));
@@ -111,7 +112,17 @@ static struct event* init(struct event_base* base, in_port_t port, struct in_add
   buffer->addr.sin_family = AF_INET;
   buffer->addr.sin_port   = htons(port);
   memcpy(&buffer->delay, delay, sizeof(struct timeval));
-  memcpy(&buffer->addr.sin_addr, addr, sizeof(struct in_addr));
+  if (addr != NULL) {
+    memcpy(&buffer->addr.sin_addr, addr, sizeof(struct in_addr));
+  } else {
+    tmp = 1;
+    tmp = setsockopt(buffer->fd, SOL_SOCKET, SO_BROADCAST, &tmp, sizeof(int));
+    if (tmp == -1) {
+      PERROR("setsockopt(SO_BROADCAST)")
+      return NULL;
+    }
+    buffer->addr.sin_addr.s_addr = INADDR_BROADCAST;
+  }
   /* Init event */
   buffer->event = event_new(base, -1, 0, &event_cb, buffer);
   event_add(buffer->event, &buffer->delay);
@@ -149,7 +160,8 @@ static void usage(int err)
   printf(" -n, --nsec   <nsec>  Specify the interval in nanosecond between two send destination port (default : %i )\n", DEFAULT_TIME_NANOSECOND);
   printf(" -c, --count  <uint>  Specify the starting count of the outgoing packets (default : %i )\n", DEFAULT_COUNT);
   printf(" -l, --size   <size>  Specify the size of outgoing packets (default : %i )\n", DEFAULT_SIZE);
-  printf(" -b, --bind   <name>  Specify the interface to bind one (default : no bind)\n");
+  printf(" -i, --bind   <name>  Specify the interface to bind one (default : no bind)\n");
+  printf(" -b, --broadcast      Broadcast the packets (Cannot be used with --dest)\n");
   exit(err);
 }
 
@@ -161,7 +173,8 @@ static const struct option long_options[] = {
   {"nsec",        required_argument, 0,  'n' },
   {"count",       required_argument, 0,  'c' },
   {"size",        required_argument, 0,  'l' },
-  {"bind",        required_argument, 0,  'b' },
+  {"bind",        required_argument, 0,  'i' },
+  {"broadcast",   required_argument, 0,  'b' },
   {NULL,                          0, 0,   0  }
 };
 
@@ -176,13 +189,17 @@ int main(int argc, char *argv[]) {
   delay.tv_usec = DEFAULT_TIME_NANOSECOND;
   uint64_t count = DEFAULT_COUNT;
   int size = DEFAULT_SIZE;
+  int broadcasted = 0;
 
-  while((opt = getopt_long(argc, argv, "hd:p:s:n:c:l:b:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "hd:p:s:n:c:l:i:b", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0);
         return 0;
       case 'd':
+        if (broadcasted) {
+          usage(1);
+        }
         addr_s = optarg;
         break;
       case 'p':
@@ -215,9 +232,15 @@ int main(int argc, char *argv[]) {
         }
         sscanf(optarg, "%i", &size);
         break;
-      case 'b':
+      case 'i':
         interface = optarg;
         break;
+      case 'b':
+        if (addr_s != NULL) {
+          usage(1);
+         }
+         broadcasted = 1;
+         break;
       default:
         usage(1);
         break;
@@ -235,7 +258,7 @@ int main(int argc, char *argv[]) {
       printf("Format de destination invalide\n");
       return -3;
     }
-  } else {
+  } else if (!broadcasted) {
     int tmp = inet_aton(DEFAULT_ADDRESS, &addr);
     assert(tmp != 0);
   }
@@ -246,7 +269,11 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  glisten = init(gbase, port, &addr, &delay, count, size, interface);
+  if (broadcasted) {
+    glisten = init(gbase, port, NULL, &delay, count, size, interface);
+  } else {
+    glisten = init(gbase, port, &addr, &delay, count, size, interface);
+  }
   if (glisten == NULL) {
     PRINTF("Unable to create listening event (libevent)\n")
     return -2;
