@@ -12,7 +12,6 @@
 #include <sys/socket.h>
 #include <time.h>
 
-#define DEBUG 1
 #ifdef DEBUG
   #define PERROR(x) perror(x);
   #define PRINTF(...) printf(__VA_ARGS__);
@@ -43,6 +42,7 @@ inline static void set_data(struct udp_io_t* data) {
   int i = clock_gettime(CLOCK_MONOTONIC, &date);
   assert(i == 0);
   len = snprintf(data->buf, BUF_SIZE, "%lu.%li,%"PRIu64, date.tv_sec, date.tv_nsec, data->count);
+  PRINTF("%"PRIu64" sent\n", data->count)
   assert(len > 0);
   data->len = len;
   ++data->count;
@@ -118,8 +118,7 @@ static void usage(int err)
   printf(" -d, --dest   <addr>  Specify the destination address (default : %s )\n", DEFAULT_ADDRESS);
   printf(" -p, --port   <port>  Specify the destination port (default : %"PRIu16" )\n", DEFAULT_PORT);
   printf(" -s, --sec    <sec>   Specify the interval in second between two send (default : %i )\n", DEFAULT_TIME_SECOND);
-  printf(" -u, --usec   <msec>  Specify the interval in nanosecond between two send destination port (default : %i )\n", DEFAULT_TIME_NANOSECOND);
-
+  printf(" -n, --nsec   <nsec>  Specify the interval in nanosecond between two send destination port (default : %i )\n", DEFAULT_TIME_NANOSECOND);
   exit(err);
 }
 
@@ -128,7 +127,7 @@ static const struct option long_options[] = {
   {"dest",        required_argument, 0,  'd' },
   {"port",        required_argument, 0,  'p' },
   {"sec",         required_argument, 0,  's' },
-  {"msec",        required_argument, 0,  'm' },
+  {"nsec",        required_argument, 0,  'n' },
   {NULL,                          0, 0,   0  }
 };
 
@@ -141,7 +140,7 @@ int main(int argc, char *argv[]) {
   delay.tv_sec = DEFAULT_TIME_SECOND;
   delay.tv_usec = DEFAULT_TIME_NANOSECOND;
 
-  while((opt = getopt_long(argc, argv, "hd:p:s:m:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "hd:p:s:n:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0);
@@ -161,7 +160,7 @@ int main(int argc, char *argv[]) {
         }
         sscanf(optarg, "%ld", &delay.tv_sec);
         break;
-      case 'm':
+      case 'n':
         if (delay.tv_usec != DEFAULT_TIME_NANOSECOND) {
           usage(1);
         }
