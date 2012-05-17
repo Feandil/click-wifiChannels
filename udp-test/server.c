@@ -21,8 +21,8 @@
 #endif
 
 /* udp buffers */
-#define BUF_SIZE      1024
-#define OUT_BUF_SIZE  1024
+#define BUF_SIZE      1500
+#define OUT_BUF_SIZE  BUF_SIZE
 #define ADDR_BUF_SIZE   20
 struct udp_io_t {
   struct sockaddr_in addr;
@@ -85,6 +85,7 @@ static void end_data(struct udp_io_t* in) {
 static void read_cb(int fd, short event, void *arg) {
   size_t size;
   ssize_t len;
+  char *end;
   struct udp_io_t* in;
 
   assert(arg != NULL);
@@ -98,7 +99,12 @@ static void read_cb(int fd, short event, void *arg) {
     PRINTF("Connection Closed\n")
   } else {
     add_data(in, in->addr_s, snprintf(in->addr_s, ADDR_BUF_SIZE, "\n%s,", inet_ntoa(in->addr.sin_addr) ));
-    add_data(in, in->buf, len);
+    end = memchr(in->buf, '|', BUF_SIZE);
+    if (end == NULL) {
+      add_data(in, in->buf, len);
+    } else {
+      add_data(in, in->buf, end - in->buf);
+    }
   }
 }
 

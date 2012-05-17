@@ -21,11 +21,12 @@
 #endif
 
 /* udp buffers */
-#define BUF_SIZE                        1024
+#define BUF_SIZE 1500
 struct udp_io_t {
   int fd;
   struct event* event;
   int len;
+  int packet_len;
   struct timeval delay;
   uint64_t count;
   struct sockaddr_in addr;
@@ -41,7 +42,7 @@ inline static void set_data(struct udp_io_t* data) {
   struct timespec date;
   int i = clock_gettime(CLOCK_MONOTONIC, &date);
   assert(i == 0);
-  len = snprintf(data->buf, BUF_SIZE, "%lu.%li,%"PRIu64, date.tv_sec, date.tv_nsec, data->count);
+  len = snprintf(data->buf, BUF_SIZE, "%lu.%li,%"PRIu64"|", date.tv_sec, date.tv_nsec, data->count);
   PRINTF("%"PRIu64" sent\n", data->count)
   assert(len > 0);
   data->len = len;
@@ -56,6 +57,11 @@ static void event_cb(int fd, short event, void *arg) {
   in = (struct udp_io_t*) arg;
 
   set_data(in);
+  if (in->len <= in->packet_len) {
+    in->len = in->packet_len;
+  } else {
+    --in->len;
+  }
   len = sendto(in->fd, in->buf, in->len, 0, (struct sockaddr *)&in->addr, sizeof(struct sockaddr_in6));
   if (len == -1) {
     PERROR("sendto")
@@ -65,7 +71,7 @@ static void event_cb(int fd, short event, void *arg) {
   event_add(in->event, &in->delay);
 }
 
-static struct event* init(struct event_base* base, in_port_t port, struct in_addr *addr, struct timeval *delay, const uint64_t count) {
+static struct event* init(struct event_base* base, in_port_t port, struct in_addr *addr, struct timeval *delay, const uint64_t count, const int size) {
   struct udp_io_t* buffer;
 
   /* Create buffer */
@@ -83,6 +89,7 @@ static struct event* init(struct event_base* base, in_port_t port, struct in_add
   }
 
   buffer->count = count;
+  buffer->packet_len = size;
   buffer->addr.sin_family = AF_INET;
   buffer->addr.sin_port   = htons(port);
   memcpy(&buffer->delay, delay, sizeof(struct timeval));
@@ -110,6 +117,7 @@ static void down(int sig)
 #define DEFAULT_TIME_SECOND 0
 #define DEFAULT_TIME_NANOSECOND 100000
 #define DEFAULT_COUNT 0
+#define DEFAULT_SIZE 900
 
 static void usage(int err)
 {
@@ -122,6 +130,7 @@ static void usage(int err)
   printf(" -s, --sec    <sec>   Specify the interval in second between two send (default : %i )\n", DEFAULT_TIME_SECOND);
   printf(" -n, --nsec   <nsec>  Specify the interval in nanosecond between two send destination port (default : %i )\n", DEFAULT_TIME_NANOSECOND);
   printf(" -c, --count  <uint>  Specify the starting count of the outgoing packets (default : %i )\n", DEFAULT_COUNT);
+  printf(" -l, --size   <size>  Specify the size of outgoing packets (default : %i )\n", DEFAULT_SIZE);
   exit(err);
 }
 
@@ -132,6 +141,7 @@ static const struct option long_options[] = {
   {"sec",         required_argument, 0,  's' },
   {"nsec",        required_argument, 0,  'n' },
   {"count",       required_argument, 0,  'c' },
+  {"size",        required_argument, 0,  'l' },
   {NULL,                          0, 0,   0  }
 };
 
@@ -144,8 +154,9 @@ int main(int argc, char *argv[]) {
   delay.tv_sec = DEFAULT_TIME_SECOND;
   delay.tv_usec = DEFAULT_TIME_NANOSECOND;
   uint64_t count = DEFAULT_COUNT;
+  int size = DEFAULT_SIZE;
 
-  while((opt = getopt_long(argc, argv, "hd:p:s:n:c:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "hd:p:s:n:c:l:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0);
@@ -177,6 +188,12 @@ int main(int argc, char *argv[]) {
         }
         sscanf(optarg, "%"SCNu64, &count);
         break;
+      case 'l':
+        if (size != DEFAULT_SIZE) {
+          usage(1);
+        }
+        sscanf(optarg, "%i", &size);
+        break;
       default:
         usage(1);
         break;
@@ -205,7 +222,7 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  glisten = init(gbase, port, &addr, &delay, count);
+  glisten = init(gbase, port, &addr, &delay, count, size);
   if (glisten == NULL) {
     PRINTF("Unable to create listening event (libevent)\n")
     return -2;
