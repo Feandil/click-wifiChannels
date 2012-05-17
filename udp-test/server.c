@@ -251,6 +251,9 @@ int main(int argc, char *argv[]) {
   event_add(glisten, NULL);
 
   signal(SIGINT, down);
+  signal(SIGABRT, down);
+  signal(SIGQUIT, down);
+  signal(SIGTERM, down);
   event_base_dispatch(gbase);
 
   return 0;
