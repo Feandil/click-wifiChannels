@@ -31,7 +31,7 @@ struct udp_io_t {
   int packet_len;
   struct timeval delay;
   uint64_t count;
-  struct sockaddr_in addr;
+  struct sockaddr_in6 addr;
   char buf[BUF_SIZE];
 };
 
@@ -44,7 +44,7 @@ inline static void set_data(struct udp_io_t* data) {
   struct timespec date;
   int i = clock_gettime(CLOCK_MONOTONIC, &date);
   assert(i == 0);
-  len = snprintf(data->buf, BUF_SIZE, "%lu.%li,%"PRIu64"|", date.tv_sec, date.tv_nsec, data->count);
+  len = snprintf(data->buf, BUF_SIZE, ",%lu.%li,%"PRIu64"|", date.tv_sec, date.tv_nsec, data->count);
   PRINTF("%"PRIu64" sent\n", data->count)
   assert(len > 0);
   data->len = len;
@@ -73,10 +73,9 @@ static void event_cb(int fd, short event, void *arg) {
   event_add(in->event, &in->delay);
 }
 
-static struct event* init(struct event_base* base, in_port_t port, struct in_addr *addr, struct timeval *delay, const uint64_t count, const int size, const char* interface) {
+static struct event* init(struct event_base* base, in_port_t port, struct in6_addr *addr, struct timeval *delay, const uint64_t count, const int size, const char* interface, uint32_t scope) {
   struct udp_io_t* buffer;
   struct ifreq iface;
-  int tmp;
 
   /* Create buffer */
   buffer = (struct udp_io_t *)malloc(sizeof(struct udp_io_t));
@@ -87,42 +86,37 @@ static struct event* init(struct event_base* base, in_port_t port, struct in_add
   memset(buffer, 0, sizeof(struct udp_io_t));
 
   /* Create socket */
-  if ((buffer->fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+  if ((buffer->fd = socket(AF_INET6, SOCK_DGRAM, 0)) < 0) {
     PERROR("socket")
     return NULL;
   }
 
   if (interface != NULL) {
     strncpy(iface.ifr_name, interface, IF_NAMESIZE - 1);
-    iface.ifr_addr.sa_family = AF_INET;
+    iface.ifr_addr.sa_family = AF_INET6;
     if (ioctl(buffer->fd, SIOCGIFADDR , &iface) == -1) {
       PERROR("ioctl")
       return NULL;
     }
-    assert(iface.ifr_addr.sa_family == AF_INET);
-    ((struct sockaddr_in*)&iface.ifr_addr)->sin_port = 0;
-    if (bind(buffer->fd, &iface.ifr_addr, sizeof(struct sockaddr_in)) < 0) {
+    assert(iface.ifr_addr.sa_family == AF_INET6);
+    ((struct sockaddr_in6*)&iface.ifr_addr)->sin6_port = 0;
+    if (bind(buffer->fd, &iface.ifr_addr, sizeof(struct sockaddr_in6)) < 0) {
       PERROR("bind()")
       return NULL;
     }
   }
 
+  if (scope != 0) {
+    buffer->addr.sin6_scope_id = scope;
+  }
+
   buffer->count = count;
   buffer->packet_len = size;
-  buffer->addr.sin_family = AF_INET;
-  buffer->addr.sin_port   = htons(port);
+  buffer->addr.sin6_family = AF_INET6;
+  buffer->addr.sin6_port   = htons(port);
   memcpy(&buffer->delay, delay, sizeof(struct timeval));
-  if (addr != NULL) {
-    memcpy(&buffer->addr.sin_addr, addr, sizeof(struct in_addr));
-  } else {
-    tmp = 1;
-    tmp = setsockopt(buffer->fd, SOL_SOCKET, SO_BROADCAST, &tmp, sizeof(int));
-    if (tmp == -1) {
-      PERROR("setsockopt(SO_BROADCAST)")
-      return NULL;
-    }
-    buffer->addr.sin_addr.s_addr = INADDR_BROADCAST;
-  }
+  memcpy(&buffer->addr.sin6_addr, addr, sizeof(struct in6_addr));
+
   /* Init event */
   buffer->event = event_new(base, -1, 0, &event_cb, buffer);
   event_add(buffer->event, &buffer->delay);
@@ -161,7 +155,6 @@ static void usage(int err)
   printf(" -c, --count  <uint>  Specify the starting count of the outgoing packets (default : %i )\n", DEFAULT_COUNT);
   printf(" -l, --size   <size>  Specify the size of outgoing packets (default : %i )\n", DEFAULT_SIZE);
   printf(" -i, --bind   <name>  Specify the interface to bind one (default : no bind)\n");
-  printf(" -b, --broadcast      Broadcast the packets (Cannot be used with --dest)\n");
   exit(err);
 }
 
@@ -174,7 +167,6 @@ static const struct option long_options[] = {
   {"count",       required_argument, 0,  'c' },
   {"size",        required_argument, 0,  'l' },
   {"bind",        required_argument, 0,  'i' },
-  {"broadcast",   required_argument, 0,  'b' },
   {NULL,                          0, 0,   0  }
 };
 
@@ -183,23 +175,20 @@ int main(int argc, char *argv[]) {
   char *addr_s = NULL;
   char *interface = NULL;
   in_port_t port = DEFAULT_PORT;
-  struct in_addr addr;
+  struct in6_addr addr = IN6ADDR_LOOPBACK_INIT;
   struct timeval delay;
   delay.tv_sec = DEFAULT_TIME_SECOND;
   delay.tv_usec = DEFAULT_TIME_NANOSECOND;
   uint64_t count = DEFAULT_COUNT;
   int size = DEFAULT_SIZE;
-  int broadcasted = 0;
+  uint32_t scope = 0;
 
-  while((opt = getopt_long(argc, argv, "hd:p:s:n:c:l:i:b", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "hd:p:s:n:c:l:i:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0);
         return 0;
       case 'd':
-        if (broadcasted) {
-          usage(1);
-        }
         addr_s = optarg;
         break;
       case 'p':
@@ -235,12 +224,6 @@ int main(int argc, char *argv[]) {
       case 'i':
         interface = optarg;
         break;
-      case 'b':
-        if (addr_s != NULL) {
-          usage(1);
-         }
-         broadcasted = 1;
-         break;
       default:
         usage(1);
         break;
@@ -253,14 +236,26 @@ int main(int argc, char *argv[]) {
   }
 
   if (addr_s != NULL) {
-    int tmp = inet_aton(addr_s, &addr);
+    int tmp = inet_pton(AF_INET6, addr_s, &addr);
     if (tmp == 0) {
       printf("Format de destination invalide\n");
       return -3;
     }
-  } else if (!broadcasted) {
-    int tmp = inet_aton(DEFAULT_ADDRESS, &addr);
-    assert(tmp != 0);
+    if (IN6_IS_ADDR_MULTICAST(&addr)) {
+      if (!IN6_IS_ADDR_MC_LINKLOCAL(&addr)) {
+        printf("Only link-scoped multicast addressess are accepted\n");
+        return -3;
+      }
+      if (interface == NULL) {
+        printf("An interface is needed for multicast\n");
+        return -3;
+      }
+      scope = if_nametoindex(interface);
+      if (scope == 0) {
+        printf("Bad interface name\n");
+        return -3;
+      }
+    }
   }
 
   gbase = event_base_new();
@@ -269,10 +264,10 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  if (broadcasted) {
-    glisten = init(gbase, port, NULL, &delay, count, size, interface);
+  if (scope) {
+    glisten = init(gbase, port, &addr, &delay, count, size, NULL, scope);
   } else {
-    glisten = init(gbase, port, &addr, &delay, count, size, interface);
+    glisten = init(gbase, port, &addr, &delay, count, size, interface, 0);
   }
   if (glisten == NULL) {
     PRINTF("Unable to create listening event (libevent)\n")

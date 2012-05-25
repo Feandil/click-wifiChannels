@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <event.h>
 #include <getopt.h>
+#include <net/if.h>
 #include <netinet/in.h>
 #include <signal.h>
 #include <stdio.h>
@@ -23,9 +24,9 @@
 /* udp buffers */
 #define BUF_SIZE      1500
 #define OUT_BUF_SIZE  BUF_SIZE
-#define ADDR_BUF_SIZE   20
+#define ADDR_BUF_SIZE   128
 struct udp_io_t {
-  struct sockaddr_in addr;
+  struct sockaddr_in6 addr;
   char addr_s[ADDR_BUF_SIZE];
   char buf[BUF_SIZE];
   char out[OUT_BUF_SIZE];
@@ -90,7 +91,7 @@ static void read_cb(int fd, short event, void *arg) {
 
   assert(arg != NULL);
   in = (struct udp_io_t*) arg;
-  size = sizeof(struct sockaddr_in);
+  size = sizeof(struct sockaddr_in6);
 
   len = recvfrom(fd, in->buf, BUF_SIZE, 0, (struct sockaddr *)&(in->addr), &size);
   if (len == -1) {
@@ -98,7 +99,9 @@ static void read_cb(int fd, short event, void *arg) {
   } else if (len == 0) {
     PRINTF("Connection Closed\n")
   } else {
-    add_data(in, in->addr_s, snprintf(in->addr_s, ADDR_BUF_SIZE, "\n%s,", inet_ntoa(in->addr.sin_addr) ));
+    in->addr_s[0]='\n';
+    inet_ntop(AF_INET6, &in->addr.sin6_addr, in->addr_s + 1, ADDR_BUF_SIZE - 1);
+    add_data(in, in->addr_s, strlen(in->addr_s));
     end = memchr(in->buf, '|', BUF_SIZE);
     if (end == NULL) {
       add_data(in, in->buf, len);
@@ -108,12 +111,12 @@ static void read_cb(int fd, short event, void *arg) {
   }
 }
 
-static struct event* listen_on(struct event_base* base, in_port_t port, FILE* out, int encode) {
-  int fd, ret;
+static struct event* listen_on(struct event_base* base, in_port_t port, FILE* out, int encode, struct ipv6_mreq *mreq) {
+  int fd, ret, tmp;
   struct udp_io_t* buffer;
 
   /* Create socket */
-  if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+  if ((fd = socket(AF_INET6, SOCK_DGRAM, 0)) < 0) {
     PERROR("socket")
     return NULL;
   }
@@ -128,10 +131,17 @@ static struct event* listen_on(struct event_base* base, in_port_t port, FILE* ou
   buffer->output = out;
 
   /* Bind Socket */
-  buffer->addr.sin_family = AF_INET;
-  buffer->addr.sin_port   = htons(port);
-  if (bind(fd, (struct sockaddr *)&buffer->addr, sizeof(struct sockaddr_in)) < 0) {
+  buffer->addr.sin6_family = AF_INET6;
+  buffer->addr.sin6_port   = htons(port);
+  if (bind(fd, (struct sockaddr *)&buffer->addr, sizeof(struct sockaddr_in6)) < 0) {
     PERROR("bind()")
+    return NULL;
+  }
+
+  /* Also listen on Multicast */
+  tmp = setsockopt(fd, IPPROTO_IPV6, IPV6_JOIN_GROUP, mreq, sizeof(struct ipv6_mreq));
+  if (tmp == -1) {
+    PERROR("setsockopt(IPV6_JOIN_GROUP)")
     return NULL;
   }
 
@@ -156,6 +166,7 @@ static void down(int sig)
   assert(gbase != NULL);
   assert(glisten != NULL);
   end_data(event_get_callback_arg(glisten));
+  close(event_get_fd(glisten));
   event_del(glisten);
   event_free(glisten);
   event_base_loopbreak(gbase);
@@ -166,6 +177,7 @@ static void down(int sig)
 #define DEFAULT_FILE stdout
 #define DEFAULT_PORT 10101
 #define DEFAULT_ENCODE 7
+#define DEFAULT_MULTICAST "ff02::1"
 
 static void usage(int err)
 {
@@ -176,6 +188,8 @@ static void usage(int err)
   printf(" -o, --ouput  <file>  Specify the output file (default : standard output)\n");
   printf(" -l, --level  [0-9]   Specify the level of the output compression (default : %i)\n", DEFAULT_ENCODE);
   printf(" -p, --port   <port>  Specify the port to listen on (default : %"PRIu16" )\n", DEFAULT_PORT);
+  printf(" -b           <addr>  Specify the address used for multicast (default : %s)\n", DEFAULT_MULTICAST);
+  printf(" -i      <interface>  Specify the interface fot the multicast\n");
 
   exit(err);
 }
@@ -194,8 +208,11 @@ int main(int argc, char *argv[]) {
   char *filename = NULL;
   in_port_t port = DEFAULT_PORT;
   FILE *dest = DEFAULT_FILE;
+  struct ipv6_mreq mreq;
+  char *addr_s = NULL;
+  char *interface = NULL;
 
-  while((opt = getopt_long(argc, argv, "ho:p:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "ho:p:b:i:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0);
@@ -218,6 +235,18 @@ int main(int argc, char *argv[]) {
         }
         sscanf(optarg, "%"SCNu16, &port);
         break;
+      case 'b':
+        if (addr_s != NULL) {
+          usage(1);
+        }
+        addr_s = optarg;
+        break;
+      case 'i':
+        if (interface != NULL) {
+          usage(1);
+        }
+        interface = optarg;
+        break;
       default:
         usage(1);
         break;
@@ -237,13 +266,37 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  if (addr_s != NULL) {
+    if (inet_pton(AF_INET6, addr_s, &mreq.ipv6mr_multiaddr) != 1) {
+      printf("Bad address format\n");
+      return -1;
+    }
+    if (!IN6_IS_ADDR_MC_LINKLOCAL(&mreq.ipv6mr_multiaddr)) {
+      printf("Error, the address isn't a locallink multicast address\n");
+      return -1;
+    }
+  } else {
+     int temp = inet_pton(AF_INET6, DEFAULT_MULTICAST, &mreq.ipv6mr_multiaddr);
+     assert(temp == 1);
+  }
+
+  if (interface != NULL) {
+    mreq.ipv6mr_interface = if_nametoindex(interface);
+    if (mreq.ipv6mr_interface == 0) {
+      printf("Error, the given interface doesn't exist\n");
+      return -1;
+    }
+  } else {
+    mreq.ipv6mr_interface = 0;
+  }
+
   gbase = event_base_new();
   if (gbase == NULL) {
     PRINTF("Unable to create base (libevent)\n")
     return -1;
   }
 
-  glisten = listen_on(gbase, port, dest, encode);
+  glisten = listen_on(gbase, port, dest, encode, &mreq);
   if (glisten == NULL) {
     PRINTF("Unable to create listening event (libevent)\n")
     return -2;
