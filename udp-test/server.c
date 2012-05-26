@@ -12,14 +12,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <zlib.h>
-
-#ifdef DEBUG
-  #define PERROR(x) perror(x);
-  #define PRINTF(...) printf(__VA_ARGS__);
-#else
-  #define PERROR(x)
-  #define PRINTF(...)
-#endif
+#include "debug.h"
 
 /* udp buffers */
 #define BUF_SIZE      1500
