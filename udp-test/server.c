@@ -166,6 +166,7 @@ static void usage(int err)
   printf("Options:\n");
   printf(" -h, --help           Print this ...\n");
   printf(" -o, --ouput  <file>  Specify the output file (default : standard output)\n");
+  printf(" -r, --rand           Randomize the output file by adding a random number\n");
   printf(" -l, --level  [0-9]   Specify the level of the output compression (default : %i)\n", DEFAULT_ENCODE);
   printf(" -p, --port   <port>  Specify the port to listen on (default : %"PRIu16" )\n", DEFAULT_PORT);
   printf(" -b           <addr>  Specify the address used for multicast (default : %s)\n", DEFAULT_MULTICAST);
@@ -176,6 +177,7 @@ static void usage(int err)
 
 static const struct option long_options[] = {
   {"help",              no_argument, 0,  'h' },
+  {"rand",              no_argument, 0,  'r' },
   {"output",      required_argument, 0,  'o' },
   {"level",       required_argument, 0,  'l' },
   {"port",        required_argument, 0,  'p' },
@@ -184,19 +186,27 @@ static const struct option long_options[] = {
 
 int main(int argc, char *argv[]) {
   int opt;
+  int rand = 0;
   int encode = DEFAULT_ENCODE;
   char *filename = NULL;
+  char *filetemp;
   in_port_t port = DEFAULT_PORT;
   FILE *dest = DEFAULT_FILE;
   struct ipv6_mreq mreq;
   char *addr_s = NULL;
   char *interface = NULL;
+  uint8_t randomized;
+  FILE *randsrc;
 
-  while((opt = getopt_long(argc, argv, "ho:p:b:i:", long_options, NULL)) != -1) {
+
+  while((opt = getopt_long(argc, argv, "hro:p:b:i:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0);
         return 0;
+      case 'r':
+        rand = 1;
+        break;
       case 'o':
         filename = optarg;
         break;
@@ -238,7 +248,35 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  if (rand && (filename == NULL)) {
+    printf("Unable to randomize the filename as no name was given\n");
+    usage(1);
+  }
+
   if (filename != NULL) {
+    filetemp = strrchr(filename, '.');
+    if ((filetemp == NULL)
+        || (strcmp(filetemp, ".gz"))) {
+      printf("Bad extension for the output (should be '.gz')\n");
+      return -1;
+    }
+    if (rand) {
+      *filetemp = '\0';
+      filetemp = malloc(strlen(filename) + 8);
+      assert(filetemp != NULL);
+      randsrc = fopen("/dev/urandom", "r+");
+      if (randsrc == NULL) {
+        printf("Unable to open /dev/urandom to generate rand\n");
+        return -1;
+      }
+      if (fread(&randomized, 1, sizeof(char), randsrc) != 1) {
+        printf("Error loadind random\n");
+        PERROR("fread(rand)")
+        return -5;
+      }
+      snprintf(filetemp, strlen(filename) + 8, "%s-%"PRIu8".gz", filename, randomized);
+      filename = filetemp;
+    }
     dest = fopen(filename, "w");
     if (dest == NULL) {
       printf("Unable to open output file\n");
