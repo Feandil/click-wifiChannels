@@ -85,16 +85,9 @@ static struct event* init(struct event_base* base, in_port_t port, struct in6_ad
   }
 
   if (interface != NULL) {
-    strncpy(iface.ifr_name, interface, IF_NAMESIZE - 1);
-    iface.ifr_addr.sa_family = AF_INET6;
-    if (ioctl(buffer->fd, SIOCGIFADDR , &iface) == -1) {
-      PERROR("ioctl")
-      return NULL;
-    }
-    assert(iface.ifr_addr.sa_family == AF_INET6);
-    ((struct sockaddr_in6*)&iface.ifr_addr)->sin6_port = 0;
-    if (bind(buffer->fd, &iface.ifr_addr, sizeof(struct sockaddr_in6)) < 0) {
-      PERROR("bind()")
+    if (setsockopt(buffer->fd, SOL_SOCKET, SO_BINDTODEVICE, interface, strlen(interface)) < 0) {
+      printf("Unable to bind to device (You need to be root to do that ... do you really want to bind to this interface ?)\n");
+      PERROR("setsockopt(SO_BINDTODEVICE)")
       return NULL;
     }
   }
