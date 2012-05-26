@@ -3,7 +3,7 @@ CFLAGS?=-pipe -O2 -g -Wall -Werror -Wchar-subscripts -Wundef -Wshadow -Wwrite-st
 
 all: server client transfo
 
-server: server.o
+server: server.o zutil.o
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) -levent -lz -o $@
 
 client: client.o

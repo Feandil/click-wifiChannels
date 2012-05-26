@@ -11,70 +11,22 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <zlib.h>
+#include "zutil.h"
 #include "debug.h"
 
 /* udp buffers */
-#define BUF_SIZE      1500
-#define OUT_BUF_SIZE  BUF_SIZE
+#define BUF_SIZE      OUT_BUF_SIZE
 #define ADDR_BUF_SIZE   128
 struct udp_io_t {
   struct sockaddr_in6 addr;
   char addr_s[ADDR_BUF_SIZE];
   char buf[BUF_SIZE];
-  char out[OUT_BUF_SIZE];
-  z_stream strm;
-  FILE *output;
+  struct zutil zdata;
 };
 
 /* Event loop */
 struct event_base* gbase;
 struct event*      glisten;
-
-static void add_data(struct udp_io_t* in, char* data, size_t len) {
-  int ret;
-  assert(in->strm.avail_in == 0);
-  assert(in->strm.avail_out != 0);
-  in->strm.next_in = (Bytef *)data;
-  in->strm.avail_in = len;
-  while (in->strm.avail_in != 0) {
-    ret = deflate(&in->strm, Z_NO_FLUSH);
-    assert(ret != Z_STREAM_ERROR);
-    if (in->strm.avail_out == 0) {
-      if (fwrite(in->out, 1, OUT_BUF_SIZE, in->output) != OUT_BUF_SIZE || ferror(in->output)) {
-        PRINTF("Unable to write to outputfile\n")
-        (void)deflateEnd(&in->strm);
-        exit(1);
-      }
-      in->strm.avail_out = OUT_BUF_SIZE;
-      in->strm.next_out = (Bytef *)in->out;
-    }
-  }
-}
-
-static void end_data(struct udp_io_t* in) {
-  size_t available;
-  int ret;
-
-  assert(in != NULL);
-  assert(in->strm.avail_in == 0);
-  assert(in->strm.avail_out != 0);
-  do {
-    available = OUT_BUF_SIZE - in->strm.avail_out;
-    if (available != 0) {
-      if (fwrite(in->out, 1, available, in->output) != available || ferror(in->output)) {
-        PRINTF("Unable to write to outputfile\n")
-        (void)deflateEnd(&in->strm);
-        exit(1);
-      }
-      in->strm.avail_out = OUT_BUF_SIZE;
-      in->strm.next_out = (Bytef*)in->out;
-    }
-    ret = deflate(&in->strm, Z_FINISH);
-    assert(ret != Z_STREAM_ERROR);
-  } while (in->strm.avail_out != OUT_BUF_SIZE);
-  (void)deflateEnd(&in->strm);
-}
 
 static void read_cb(int fd, short event, void *arg) {
   size_t size;
@@ -94,18 +46,18 @@ static void read_cb(int fd, short event, void *arg) {
   } else {
     in->addr_s[0]='\n';
     inet_ntop(AF_INET6, &in->addr.sin6_addr, in->addr_s + 1, ADDR_BUF_SIZE - 1);
-    add_data(in, in->addr_s, strlen(in->addr_s));
+    add_data(&in->zdata, in->addr_s, strlen(in->addr_s));
     end = memchr(in->buf, '|', BUF_SIZE);
     if (end == NULL) {
-      add_data(in, in->buf, len);
+      add_data(&in->zdata, in->buf, len);
     } else {
-      add_data(in, in->buf, end - in->buf);
+      add_data(&in->zdata, in->buf, end - in->buf);
     }
   }
 }
 
 static struct event* listen_on(struct event_base* base, in_port_t port, FILE* out, int encode, struct ipv6_mreq *mreq) {
-  int fd, ret, tmp;
+  int fd, tmp;
   struct udp_io_t* buffer;
 
   /* Create socket */
@@ -121,7 +73,6 @@ static struct event* listen_on(struct event_base* base, in_port_t port, FILE* ou
     return NULL;
   }
   memset(buffer, 0, sizeof(struct udp_io_t));
-  buffer->output = out;
 
   /* Bind Socket */
   buffer->addr.sin6_family = AF_INET6;
@@ -139,16 +90,10 @@ static struct event* listen_on(struct event_base* base, in_port_t port, FILE* ou
   }
 
   /* Initialize zlib */
-  buffer->strm.zalloc = Z_NULL;
-  buffer->strm.zfree = Z_NULL;
-  buffer->strm.opaque = Z_NULL;
-  ret = deflateInit2(&buffer->strm, encode, Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY);
-  if (ret != Z_OK) {
-    PRINTF("ZLIB initialization error : %i\n", ret)
+  tmp = zinit(&buffer->zdata, out, encode);
+  if (tmp == -1) {
     return NULL;
   }
-  buffer->strm.next_out = (Bytef *)buffer->out;
-  buffer->strm.avail_out = OUT_BUF_SIZE;
 
   /* Init event and add it to active events */
   return event_new(base, fd, EV_READ | EV_PERSIST, &read_cb, buffer);
@@ -156,9 +101,12 @@ static struct event* listen_on(struct event_base* base, in_port_t port, FILE* ou
 
 static void down(int sig)
 {
+  struct udp_io_t* arg;
   assert(gbase != NULL);
   assert(glisten != NULL);
-  end_data(event_get_callback_arg(glisten));
+  arg = event_get_callback_arg(glisten);
+  assert(arg != NULL);
+  end_data(&arg->zdata);
   close(event_get_fd(glisten));
   event_del(glisten);
   event_free(glisten);
