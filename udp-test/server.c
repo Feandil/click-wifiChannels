@@ -3,6 +3,8 @@
 #include <inttypes.h>
 #include <event.h>
 #include <getopt.h>
+#include <linux/net_tstamp.h>
+#include <linux/sockios.h>
 #include <net/if.h>
 #include <netinet/in.h>
 #include <signal.h>
@@ -17,10 +19,19 @@
 /* udp buffers */
 #define BUF_SIZE      OUT_BUF_SIZE
 #define ADDR_BUF_SIZE   128
+#define TIME_SIZE 128
+#define CONTROL_SIZE 512
+struct control {
+  struct cmsghdr cm;
+  char control[CONTROL_SIZE];
+};
 struct udp_io_t {
   struct sockaddr_in6 addr;
   char addr_s[ADDR_BUF_SIZE];
   char buf[BUF_SIZE];
+  char date[TIME_SIZE];
+  struct msghdr hdr;
+  struct control ctrl;
   struct zutil zdata;
 };
 
@@ -29,24 +40,45 @@ struct event_base* gbase;
 struct event*      glisten;
 
 static void read_cb(int fd, short event, void *arg) {
-  size_t size;
+  int tmp;
   ssize_t len;
   char *end;
   struct udp_io_t* in;
+  struct cmsghdr *chdr;
+  struct timespec *stamp;
+  struct iovec iov;
 
   assert(arg != NULL);
   in = (struct udp_io_t*) arg;
-  size = sizeof(struct sockaddr_in6);
 
-  len = recvfrom(fd, in->buf, BUF_SIZE, 0, (struct sockaddr *)&(in->addr), &size);
+  memset(&in->hdr, 0, sizeof(struct msghdr));
+  in->hdr.msg_iov = &iov;
+  in->hdr.msg_iovlen = 1;
+  iov.iov_base = in->buf;
+  iov.iov_len = BUF_SIZE;
+  in->hdr.msg_control = &in->ctrl;
+  in->hdr.msg_controllen = sizeof(struct control);
+  in->hdr.msg_name = (caddr_t)&(in->addr);
+  in->hdr.msg_namelen = sizeof(struct sockaddr_in6);
+
+  len = recvmsg(fd, &in->hdr, MSG_DONTWAIT);
   if (len == -1) {
-    PERROR("recvfrom")
+    PERROR("recvmsg")
   } else if (len == 0) {
     PRINTF("Connection Closed\n")
   } else {
     in->addr_s[0]='\n';
     inet_ntop(AF_INET6, &in->addr.sin6_addr, in->addr_s + 1, ADDR_BUF_SIZE - 1);
     add_data(&in->zdata, in->addr_s, strlen(in->addr_s));
+    for (chdr = CMSG_FIRSTHDR(&in->hdr); chdr; chdr = CMSG_NXTHDR(&in->hdr, chdr)) {
+      if ((chdr->cmsg_level == SOL_SOCKET)
+           && (chdr->cmsg_type == SO_TIMESTAMPING)) {
+        stamp = (struct timespec*) CMSG_DATA(chdr);
+        tmp = snprintf(in->date, TIME_SIZE, ",%ld.%09ld", stamp->tv_sec, stamp->tv_nsec);
+        assert(tmp > 0);
+        add_data(&in->zdata, in->date, tmp);
+      }
+    }
     end = memchr(in->buf, '|', BUF_SIZE);
     if (end == NULL) {
       add_data(&in->zdata, in->buf, len);
@@ -57,7 +89,7 @@ static void read_cb(int fd, short event, void *arg) {
 }
 
 static struct event* listen_on(struct event_base* base, in_port_t port, FILE* out, int encode, struct ipv6_mreq *mreq) {
-  int fd, tmp;
+  int fd, tmp, so_stamp;
   struct udp_io_t* buffer;
 
   /* Create socket */
@@ -92,6 +124,13 @@ static struct event* listen_on(struct event_base* base, in_port_t port, FILE* ou
   /* Initialize zlib */
   tmp = zinit(&buffer->zdata, out, encode);
   if (tmp == -1) {
+    return NULL;
+  }
+
+  /* Timestamp incoming packets */
+  so_stamp = SOF_TIMESTAMPING_RX_HARDWARE | SOF_TIMESTAMPING_RX_SOFTWARE | SOF_TIMESTAMPING_SOFTWARE | SOF_TIMESTAMPING_SYS_HARDWARE | SOF_TIMESTAMPING_RAW_HARDWARE;
+  if (setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPING, &so_stamp, sizeof(so_stamp)) < 0) {
+    PERROR("setsockopt(SO_TIMESTAMPING)")
     return NULL;
   }
 
