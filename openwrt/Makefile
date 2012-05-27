@@ -6,6 +6,7 @@
 #
 
 include $(TOPDIR)/rules.mk
+include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=udp-test
 PKG_VERSION:=20120515
@@ -32,8 +33,7 @@ define Package/udp-test/Description
 	Tools that generate paquets, receive and gzip it on the fly.
 endef
 
-TARGET_CFLAGS += "-static -O2 -MD"
-TARGET_CXXFLAGS += "-static -O2 -MD"
+TARGET_CFLAGS += -I$(LINUX_DIR)/include
 
 define Build/Configure
 endef
