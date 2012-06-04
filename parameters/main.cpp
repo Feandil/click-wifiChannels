@@ -33,7 +33,12 @@ static void usage(int err)
   *output << " * basiconoff: On-Off representation without cdf mathematic determination" << std::endl;
   *output << "       --free <file>  Filename used for error-free burst length cdf" << std::endl;
   *output << "       --err  <file>  Filename used for error burst length cdf" << std::endl;
-  
+  *output << " * basicmta: Markov-based Trace Analysis representation without cdf mathematic determination" << std::endl;
+  *output << "   -k <k>             Order of the internal markov chain" << std::endl;
+  *output << "       --free <file>  Filename used for error-free burst length cdf" << std::endl;
+  *output << "       --err  <file>  Filename used for error burst length cdf" << std::endl;
+  *output << "       --markov <f>   Filename used for the internal markovchain output" << std::endl;
+
   exit(err);
 }
 
