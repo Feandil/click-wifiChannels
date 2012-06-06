@@ -159,18 +159,18 @@ static void down(int sig)
 #define DEFAULT_ENCODE 7
 #define DEFAULT_MULTICAST "ff02::1"
 
-static void usage(int err)
+static void usage(int err, char *name)
 {
-  printf("listen: Listen on a given socket and print packets content\n");
-  printf("Usage: ./listen [OPTIONS]\n");
+  printf("%s: Listen on a given socket and store timestamped packet content\n", name);
+  printf("Usage: %s [OPTIONS]\n", name);
   printf("Options:\n");
   printf(" -h, --help           Print this ...\n");
-  printf(" -o, --ouput  <file>  Specify the output file (default : standard output)\n");
+  printf(" -o, --ouput  <file>  Specify the output file (default: standard output)\n");
   printf(" -r, --rand           Randomize the output file by adding a random number\n");
   printf(" -l, --level  [0-9]   Specify the level of the output compression (default : %i)\n", DEFAULT_ENCODE);
-  printf(" -p, --port   <port>  Specify the port to listen on (default : %"PRIu16" )\n", DEFAULT_PORT);
+  printf(" -p, --port   <port>  Specify the port to listen on (default: %"PRIu16")\n", DEFAULT_PORT);
   printf(" -b           <addr>  Specify the address used for multicast (default : %s)\n", DEFAULT_MULTICAST);
-  printf(" -i      <interface>  Specify the interface fot the multicast\n");
+  printf(" -i      <interface>  Specify the interface for the multicast\n");
 
   exit(err);
 }
@@ -186,7 +186,7 @@ static const struct option long_options[] = {
 
 int main(int argc, char *argv[]) {
   int opt;
-  int rand = 0;
+  int randi = 0;
   int encode = DEFAULT_ENCODE;
   char *filename = NULL;
   char *filetemp;
@@ -202,55 +202,55 @@ int main(int argc, char *argv[]) {
   while((opt = getopt_long(argc, argv, "hro:p:b:i:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
-        usage(0);
+        usage(0, argv[0]);
         return 0;
       case 'r':
-        rand = 1;
+        randi = 1;
         break;
       case 'o':
         filename = optarg;
         break;
       case 'l':
         if (encode != DEFAULT_ENCODE) {
-          usage(1);
+          usage(1, argv[0]);
         }
         sscanf(optarg, "%i", &encode);
         if (encode < 0 || encode > 9) {
-          usage(1);
+          usage(1, argv[0]);
         }
         break;
       case 'm':
         if (port != DEFAULT_PORT) {
-          usage(1);
+          usage(1, argv[0]);
         }
         sscanf(optarg, "%"SCNu16, &port);
         break;
       case 'b':
         if (addr_s != NULL) {
-          usage(1);
+          usage(1, argv[0]);
         }
         addr_s = optarg;
         break;
       case 'i':
         if (interface != NULL) {
-          usage(1);
+          usage(1, argv[0]);
         }
         interface = optarg;
         break;
       default:
-        usage(1);
+        usage(1, argv[0]);
         break;
     }
   }
 
  if(argc > optind) {
-    usage(1);
+    usage(1, argv[0]);
     return 1;
   }
 
-  if (rand && (filename == NULL)) {
+  if (randi && (filename == NULL)) {
     printf("Unable to randomize the filename as no name was given\n");
-    usage(1);
+    usage(1, argv[0]);
   }
 
   if (filename != NULL) {
@@ -260,7 +260,7 @@ int main(int argc, char *argv[]) {
       printf("Bad extension for the output (should be '.gz')\n");
       return -1;
     }
-    if (rand) {
+    if (randi) {
       *filetemp = '\0';
       filetemp = malloc(strlen(filename) + 8);
       assert(filetemp != NULL);

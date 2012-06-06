@@ -226,19 +226,19 @@ static void down(int sig)
 #define DEFAULT_COUNT 0
 #define DEFAULT_SIZE 900
 
-static void usage(int err)
+static void usage(int err, char *name)
 {
-  printf("listen: Listen on a given socket and print packets content\n");
-  printf("Usage: ./listen [OPTIONS]\n");
+  printf("%s: Send packets to the given destination\n", name);
+  printf("Usage: %s [OPTIONS]\n", name);
   printf("Options:\n");
   printf(" -h, --help           Print this ...\n");
-  printf(" -d, --dest   <addr>  Specify the destination address (default : %s )\n", DEFAULT_ADDRESS);
-  printf(" -p, --port   <port>  Specify the destination port (default : %"PRIu16" )\n", DEFAULT_PORT);
-  printf(" -s, --sec    <sec>   Specify the interval in second between two send (default : %i )\n", DEFAULT_TIME_SECOND);
-  printf(" -n, --nsec   <nsec>  Specify the interval in nanosecond between two send destination port (default : %i )\n", DEFAULT_TIME_NANOSECOND);
-  printf(" -c, --count  <uint>  Specify the starting count of the outgoing packets (default : %i )\n", DEFAULT_COUNT);
-  printf(" -l, --size   <size>  Specify the size of outgoing packets (default : %i )\n", DEFAULT_SIZE);
-  printf(" -i, --bind   <name>  Specify the interface to bind one (default : no bind)\n");
+  printf(" -d, --dest   <addr>  Specify the destination address (default: %s)\n", DEFAULT_ADDRESS);
+  printf(" -p, --port   <port>  Specify the destination port (default: %"PRIu16")\n", DEFAULT_PORT);
+  printf(" -s, --sec    <sec>   Specify the interval in second between two packets (default: %i)\n", DEFAULT_TIME_SECOND);
+  printf(" -u, --usec   <usec>  Specify the interval in microsecond between two packets (default: %i)\n", DEFAULT_TIME_NANOSECOND);
+  printf(" -c, --count  <uint>  Specify the starting count of the outgoing packets (default: %i)\n", DEFAULT_COUNT);
+  printf(" -l, --size   <size>  Specify the size of outgoing packets (default: %i)\n", DEFAULT_SIZE);
+  printf(" -i, --bind   <name>  Specify the interface to bind one (default: no bind)\n");
   printf(" -t, --stamp  <file>  Timestamp the real moment the packets were sent, store information in <file>\n");
   exit(err);
 }
@@ -248,7 +248,7 @@ static const struct option long_options[] = {
   {"dest",        required_argument, 0,  'd' },
   {"port",        required_argument, 0,  'p' },
   {"sec",         required_argument, 0,  's' },
-  {"nsec",        required_argument, 0,  'n' },
+  {"usec",        required_argument, 0,  'u' },
   {"count",       required_argument, 0,  'c' },
   {"size",        required_argument, 0,  'l' },
   {"bind",        required_argument, 0,  'i' },
@@ -271,41 +271,41 @@ int main(int argc, char *argv[]) {
   int size = DEFAULT_SIZE;
   uint32_t scope = 0;
 
-  while((opt = getopt_long(argc, argv, "hd:p:s:n:c:l:i:t:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "hd:p:s:u:c:l:i:t:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
-        usage(0);
+        usage(0, argv[0]);
         return 0;
       case 'd':
         addr_s = optarg;
         break;
       case 'p':
         if (port != DEFAULT_PORT) {
-          usage(1);
+          usage(1, argv[0]);
         }
         sscanf(optarg, "%"SCNu16, &port);
         break;
       case 's':
         if (delay.tv_sec != DEFAULT_TIME_SECOND) {
-          usage(1);
+          usage(1, argv[0]);
         }
         sscanf(optarg, "%ld", &delay.tv_sec);
         break;
-      case 'n':
+      case 'u':
         if (delay.tv_usec != DEFAULT_TIME_NANOSECOND) {
-          usage(1);
+          usage(1, argv[0]);
         }
         sscanf(optarg, "%li", &delay.tv_usec);
         break;
       case 'c':
         if (count != DEFAULT_COUNT) {
-          usage(1);
+          usage(1, argv[0]);
         }
         sscanf(optarg, "%"SCNu64, &count);
         break;
       case 'l':
         if (size != DEFAULT_SIZE) {
-          usage(1);
+          usage(1, argv[0]);
         }
         sscanf(optarg, "%i", &size);
         break;
@@ -316,13 +316,13 @@ int main(int argc, char *argv[]) {
         filename = optarg;
         break;
       default:
-        usage(1);
+        usage(1, argv[0]);
         break;
     }
   }
 
  if(argc > optind) {
-    usage(1);
+    usage(1, argv[0]);
     return 1;
   }
 
