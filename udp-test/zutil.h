@@ -15,7 +15,7 @@ struct zutil {
 
 
 int zinit(struct zutil* buffer, FILE *out, const int encode);
-void add_data(struct zutil *in, char *data, const size_t len);
+void add_data(struct zutil *in, const char *data, const size_t len);
 void end_data(struct zutil *in);
 
 #endif /* ZUTIL_H */
