@@ -3,9 +3,10 @@
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
 #include <net/if.h>
-#include <stropts.h>
+#include <sys/ioctl.h>
 #include <linux/sockios.h>
 #include <unistd.h>
+#include "monitor.h"
 
 static int error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err, void *arg)
 {
@@ -124,7 +125,7 @@ send_nl80211_message(set_80211_message content, const char* arg_char, const int 
   }
   /* Set the callbacks */
   nl_socket_set_cb(nlsock, nlcb);
-  ret = nl_send_auto(nlsock, nlmsg);
+  ret = nl_send_auto_complete(nlsock, nlmsg);
   if (ret < 0) {
     fprintf(stderr, "Failed to sent message : %i\n", ret);
     goto message_cb_clean;
