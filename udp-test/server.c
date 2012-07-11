@@ -128,13 +128,13 @@ static void read_cb(int fd, short event, void *arg) {
     }
     uint8_t rate = 0;
     int8_t signal = 0;
-    while ((tmp = ieee80211_radiotap_iterator_next(&iterator)) >= 0) {
+    while ((tmp = ieee80211_radiotap_iterator_next(&iterator, IEEE80211_RADIOTAP_DBM_ANTSIGNAL)) >= 0) {
       switch(tmp) {
         case IEEE80211_RADIOTAP_DBM_ANTSIGNAL:
-          signal = (int8_t)  *(iterator.this_arg);
+          signal = (int8_t)  *(iterator.arg);
           break;
         case IEEE80211_RADIOTAP_RATE:
-          rate = (uint8_t)  *(iterator.this_arg);
+          rate = (uint8_t)  *(iterator.arg);
           break;
       }
     }

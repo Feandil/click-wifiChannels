@@ -35,6 +35,12 @@
  * Mike Kershaw (dragorn@kismetwireless.net)
  */
 
+/*
+ * Modifications :
+ *  - Remove ugly maccro
+ * Vincent Brillault (git@lerya.net)
+ */
+
 #ifndef IEEE80211RADIOTAP_H
 #define IEEE80211RADIOTAP_H
 
@@ -248,13 +254,5 @@ enum ieee80211_radiotap_type {
 #define IEEE80211_RADIOTAP_F_TX_NOACK	0x0008	/* frame should not be ACKed */
 #define IEEE80211_RADIOTAP_F_TX_NOSEQ	0x0010	/* sequence number handled
 * by userspace */
-
-/* Ugly macro to convert literal channel numbers into their mhz equivalents
- * There are certianly some conditions that will break this (like feeding it '30')
- * but they shouldn't arise since nothing talks on channel 30. */
-#define ieee80211chan2mhz(x) \
-(((x) <= 14) ? \
-(((x) == 14) ? 2484 : ((x) * 5) + 2407) : \
-((x) + 1000) * 5)
 
 #endif				/* IEEE80211_RADIOTAP_H */
