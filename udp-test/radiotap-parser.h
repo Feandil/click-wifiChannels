@@ -17,18 +17,12 @@
 
 
 
-#define	__user
-#include "byteorder.h"
 #include <stdint.h>
 
 typedef uint64_t u64;
 typedef uint32_t u32;
 typedef uint16_t u16;
 typedef uint8_t u8;
-
-#ifndef unlikely
-#define	unlikely(x) (x)
-#endif
 
 #include "ieee80211_radiotap.h"
 

@@ -18,9 +18,13 @@
 
 #include <stdio.h>
 #include <errno.h>
+#include <asm/byteorder.h>
 
 #include "radiotap-parser.h"
 
+#ifndef unlikely
+#define unlikely(x) (x)
+#endif
 
 /*
  * Radiotap header iteration
@@ -54,13 +58,13 @@ int ieee80211_radiotap_iterator_init(
 	
 	/* sanity check for allowed length and radiotap length field */
 	
-	if (max_length < (le16_to_cpu(radiotap_header->it_len)))
+	if (max_length < (__le16_to_cpu(radiotap_header->it_len)))
 		return (-EINVAL);
 	
 	iterator->rtheader = radiotap_header;
-	iterator->max_length = le16_to_cpu(radiotap_header->it_len);
+	iterator->max_length = __le16_to_cpu(radiotap_header->it_len);
 	iterator->arg_index = 0;
-	iterator->bitmap_shifter = le32_to_cpu(radiotap_header->it_present);
+	iterator->bitmap_shifter = __le32_to_cpu(radiotap_header->it_present);
 	iterator->arg = ((u8 *)radiotap_header) +
 	sizeof (struct ieee80211_radiotap_header);
 	iterator->this_arg = 0;
@@ -69,7 +73,7 @@ int ieee80211_radiotap_iterator_init(
 	
 	if (unlikely(iterator->bitmap_shifter &
 				 IEEE80211_RADIOTAP_PRESENT_EXTEND_MASK)) {
-		while (le32_to_cpu(*((u32 *)iterator->arg)) &
+		while (__le32_to_cpu(*((u32 *)iterator->arg)) &
 			   IEEE80211_RADIOTAP_PRESENT_EXTEND_MASK) {
 			iterator->arg += sizeof (u32);
 			
@@ -222,7 +226,7 @@ int ieee80211_radiotap_iterator_next(
 			if (iterator->bitmap_shifter & 1) {
 				/* b31 was set, there is more */
 				/* move to next u32 bitmap */
-				iterator->bitmap_shifter = le32_to_cpu(
+				iterator->bitmap_shifter = __le32_to_cpu(
 													   *iterator->next_bitmap);
 				iterator->next_bitmap++;
 			} else {
