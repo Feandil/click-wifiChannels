@@ -57,9 +57,15 @@ struct udp_io_t {
 /* Event loop */
 struct event_base* gbase;
 struct event*      glisten;
+struct event*      gdrop;
 
 #define READ_CB_MATCH_LOCAL  0x01
 #define READ_CB_MATCH_MULTI  0x02
+
+static void drop_cb(int fd, short event, void *arg) {
+  char buffer;
+  recv(fd, &buffer, 1, 0);
+}
 
 static void read_cb(int fd, short event, void *arg) {
   int tmp;
@@ -351,16 +357,48 @@ static struct event* listen_on(struct event_base* base, in_port_t port, const ch
   return event_new(base, fd, EV_READ | EV_PERSIST, &read_cb, buffer);
 }
 
+static struct event* drop_on(struct event_base* base, in_port_t port, struct ipv6_mreq *mreq) {
+  int fd, tmp;
+  struct sockaddr_in6 ipaddr;
+
+  /* Create socket */
+  if ((fd = socket(AF_INET6, SOCK_DGRAM, 0)) < 0) {
+    PERROR("socket")
+    return NULL;
+  }
+
+  /* Bind Socket */
+  memset(&ipaddr, 0, sizeof(struct sockaddr_in6));
+  ipaddr.sin6_family = AF_INET6;
+  ipaddr.sin6_port = htons(port);
+  if (bind(fd, (struct sockaddr *)&ipaddr, sizeof(struct sockaddr_in6)) < 0) {
+    PERROR("bind()")
+    return NULL;
+  }
+
+  /* Also listen on Multicast */
+  tmp = setsockopt(fd, IPPROTO_IPV6, IPV6_JOIN_GROUP, mreq, sizeof(struct ipv6_mreq));
+  if (tmp == -1) {
+    PERROR("setsockopt(IPV6_JOIN_GROUP)")
+    return NULL;
+  }
+
+  /* Init event and add it to active events */
+  return event_new(base, fd, EV_READ | EV_PERSIST, &drop_cb, NULL);
+}
+
 static void down(int sig)
 {
   struct udp_io_t* arg;
   assert(gbase != NULL);
   assert(glisten != NULL);
+  assert(gdrop != NULL);
   arg = event_get_callback_arg(glisten);
   assert(arg != NULL);
   end_data(&arg->zdata);
   close_interface(arg->mon_name);
   close(event_get_fd(glisten));
+  close(event_get_fd(gdrop));
   event_del(glisten);
   event_free(glisten);
   event_base_loopbreak(gbase);
@@ -412,6 +450,7 @@ int main(int argc, char *argv[]) {
   uint8_t randomized;
   FILE *randsrc;
   struct in6_addr multicast;
+  struct ipv6_mreq mreq;
 
   while((opt = getopt_long(argc, argv, "hro:p:b:i:", long_options, NULL)) != -1) {
     switch(opt) {
@@ -513,13 +552,15 @@ int main(int argc, char *argv[]) {
      assert(temp == 1);
   }
 
+  memcpy(&mreq.ipv6mr_multiaddr, &multicast, sizeof(struct in6_addr));
+
   if (interface != NULL) {
-    if (if_nametoindex(interface) == 0) {
+    if ((mreq.ipv6mr_interface = if_nametoindex(interface)) == 0) {
       printf("Error, the given interface doesn't exist\n");
       return -1;
     }
   } else {
-    if (if_nametoindex(DEFAULT_INTERFACE) == 0) {
+    if ((mreq.ipv6mr_interface = if_nametoindex(DEFAULT_INTERFACE)) == 0) {
       printf("Error, the default interface doesn't exist, please specify one using -i\n");
       return -1;
     }
@@ -538,6 +579,13 @@ int main(int argc, char *argv[]) {
     return -2;
   }
   event_add(glisten, NULL);
+
+  gdrop = drop_on(gbase, port, &mreq);
+  if (gdrop == NULL) {
+    PRINTF("Unable to create listening event (libevent)\n")
+    return -2;
+  }
+  event_add(gdrop, NULL);
 
   signal(SIGINT, down);
   signal(SIGABRT, down);
