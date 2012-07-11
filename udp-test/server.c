@@ -222,7 +222,7 @@ static void read_cb(int fd, short event, void *arg) {
       return;
     }
 
-    data = inet_ntop(AF_INET6, iphdr->dst, in->addr_s, ADDR_BUF_SIZE);
+    data = inet_ntop(AF_INET6, iphdr->src, in->addr_s, ADDR_BUF_SIZE);
     assert(data != NULL);
     add_data(&in->zdata, data, strlen(data));
 
