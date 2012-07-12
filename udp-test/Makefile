@@ -3,7 +3,8 @@ CFLAGS?=-pipe -O2 -g -Wall -Werror -Wchar-subscripts -Wundef -Wshadow -Wwrite-st
 
 LZ_LIBS ?= -lz
 NL_LIBS ?= -lnl-3 -lnl-genl-3
-EV_LIBS ?= -levent
+EVENT_LIBS ?= -levent
+EV_LIBS ?= -lev
 RT_LIBS ?= -lrt
 
 LDLIBS ?= $(LZ_LIBS)
@@ -13,7 +14,7 @@ CFLAGS += -I/usr/include/libnl3
 all: server client transfo
 
 server: server.o zutil.o monitor.o radiotap-parser.o crc.o
-	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(EV_LIBS) $(RT_LIBS) $(NL_LIBS) -o $@
+	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(EVENT_LIBS) $(RT_LIBS) $(NL_LIBS) -o $@
 
 client: client.o zutil.o
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(EV_LIBS) $(RT_LIBS) -o $@
