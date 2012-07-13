@@ -11,9 +11,11 @@ LDLIBS ?= $(LZ_LIBS)
 
 CFLAGS += -I/usr/include/libnl3
 
+MONITOR_DEP = monitor.o radiotap-parser.o crc.o
+
 all: server client transfo
 
-server: server.o zutil.o monitor.o radiotap-parser.o crc.o
+server: server.o zutil.o $(MONITOR_DEP)
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(EVENT_LIBS) $(RT_LIBS) $(NL_LIBS) -o $@
 
 client: client.o zutil.o
