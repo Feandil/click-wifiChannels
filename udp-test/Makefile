@@ -6,6 +6,7 @@ NL_LIBS ?= -lnl-3 -lnl-genl-3
 EVENT_LIBS ?= -levent
 EV_LIBS ?= -lev
 RT_LIBS ?= -lrt
+NCURSES_LIBS ?= -lncursesw
 
 LDLIBS ?= $(LZ_LIBS)
 
@@ -13,7 +14,7 @@ CFLAGS += -I/usr/include/libnl3
 
 MONITOR_DEP = monitor.o radiotap-parser.o crc.o
 
-all: server client transfo
+all: server client transfo evallink
 
 server: server.o zutil.o $(MONITOR_DEP)
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(EVENT_LIBS) $(RT_LIBS) $(NL_LIBS) -o $@
@@ -29,3 +30,7 @@ clean:
 	-rm server
 	-rm client
 	-rm transfo
+	-rm evallink
+
+evallink: evallink.o $(MONITOR_DEP)
+	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(EV_LIBS) $(RT_LIBS) $(NL_LIBS) $(NCURSES_LIBS) -o $@
