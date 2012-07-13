@@ -98,17 +98,9 @@ read_cb(int fd, short event, void *arg)
 }
 
 static struct event* listen_on(struct event_base* base, in_port_t port, const char* mon_interface, const int phy_interface, const char* wan_interface, const struct in6_addr* multicast, FILE* out, int encode) {
-  int fd, tmp, so_stamp, tmp_fd;
-  struct ifreq ifreq;
-  unsigned if_id;
+  int tmp;
   struct udp_io_t* buffer;
-  struct ifaddrs *ifaddr, *head;
-
-  /* Create socket */
-  if ((fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
-    PERROR("socket")
-    return NULL;
-  }
+  struct mon_io_t* mon;
 
   /* Create buffer */
   buffer = (struct udp_io_t *)malloc(sizeof(struct udp_io_t));
@@ -118,33 +110,14 @@ static struct event* listen_on(struct event_base* base, in_port_t port, const ch
   }
   memset(buffer, 0, sizeof(struct udp_io_t));
 
-  buffer->mon.fd = fd;
-
-  /* Create monitor interface */
-  tmp = open_monitor_interface(mon_interface, phy_interface);
-  if (tmp < 0) {
-    if (tmp == -23) {
-      PRINTF("Warning: interface already exist !\n")
-    } else {
-      PRINTF("Unable to open monitor interface\n")
-      return NULL;
-    }
+  mon = monitor_listen_on(&buffer->mon, port, mon_interface, phy_interface, wan_interface, multicast, 1);
+  if (mon == NULL) {
+    PRINTF("Unable to listen on monitoring interface")
+    return NULL;
   }
+  assert(mon == &buffer->mon);
+
   strncpy(buffer->mon_name, mon_interface, IFNAMSIZ);
-
-  if_id = if_nametoindex(mon_interface);
-  if (if_id == 0) {
-    PRINTF("Monitor interface lost ....\n")
-    return NULL;
-  }
-  /* Bind Socket */
-  buffer->mon.ll_addr.sll_family = AF_PACKET;
-  buffer->mon.ll_addr.sll_ifindex = if_id;
-
-  if (bind(fd, (struct sockaddr *)&buffer->mon.ll_addr, sizeof(struct sockaddr_ll)) < 0) {
-    PERROR("bind()")
-    return NULL;
-  }
 
   /* Initialize zlib */
   tmp = zinit(&buffer->zdata, out, encode);
@@ -152,57 +125,8 @@ static struct event* listen_on(struct event_base* base, in_port_t port, const ch
     return NULL;
   }
 
-  /* Timestamp incoming packets */
-  so_stamp = SOF_TIMESTAMPING_RX_HARDWARE | SOF_TIMESTAMPING_RX_SOFTWARE | SOF_TIMESTAMPING_SOFTWARE | SOF_TIMESTAMPING_SYS_HARDWARE | SOF_TIMESTAMPING_RAW_HARDWARE;
-  if (setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPING, &so_stamp, sizeof(so_stamp)) < 0) {
-    PERROR("setsockopt(SO_TIMESTAMPING)")
-    return NULL;
-  }
-
-  /* Copy ipv6 addr (multicast)  and port*/
-  memcpy(&buffer->mon.multicast, multicast, sizeof(struct in6_addr));
-  buffer->mon.port = htons(port);
-
-  /* Find local addresses */
-  tmp_fd = socket(AF_INET6, SOCK_DGRAM, 0);
-  if (tmp_fd < 0) {
-    PERROR("socket")
-    return NULL;
-  }
-
-  snprintf(ifreq.ifr_name, IFNAMSIZ, "%s", wan_interface);
-  if (ioctl(tmp_fd, SIOCGIFHWADDR, (char *)&ifreq) < 0) {
-    PERROR("ioctl(sockfd");
-    return NULL;
-  }
-  memcpy(buffer->mon.hw_addr, ifreq.ifr_ifru.ifru_hwaddr.sa_data, 6);
-  close(tmp_fd);
-
-  if (getifaddrs(&ifaddr) < 0) {
-    PERROR("getifaddrs");
-    return NULL;
-  }
-  tmp = 0;
-  for (head = ifaddr; ifaddr != NULL; ifaddr = ifaddr->ifa_next) {
-    if (ifaddr->ifa_addr == NULL || ifaddr->ifa_name == NULL) {
-      continue;
-    }
-    if (ifaddr->ifa_addr->sa_family != AF_INET6) {
-      continue;
-    }
-    if (strcmp(ifaddr->ifa_name, wan_interface) == 0) {
-      if (tmp >= MAX_ADDR) {
-         PRINTF("Too many addr, not able to store them")
-         return NULL;
-      }
-      memcpy(buffer->mon.ip_addr[tmp].s6_addr, ((struct sockaddr_in6*)ifaddr->ifa_addr)->sin6_addr.s6_addr, sizeof(struct in6_addr));
-      ++tmp;
-    }
-  }
-  freeifaddrs(head);
-
   /* Init event and add it to active events */
-  return event_new(base, fd, EV_READ | EV_PERSIST, &read_cb, buffer);
+  return event_new(base, buffer->mon.fd, EV_READ | EV_PERSIST, &read_cb, buffer);
 }
 
 static struct event* drop_on(struct event_base* base, in_port_t port, struct ipv6_mreq *mreq) {

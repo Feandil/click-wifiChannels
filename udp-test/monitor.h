@@ -32,4 +32,5 @@ struct mon_io_t {
 
 typedef void (*consume_mon_message) (struct timespec *stamp, uint8_t rate, int8_t signal, const struct in6_addr *from, const char* data, ssize_t len, uint16_t machdr_fc, void* arg);
 void read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, void* arg);
+struct mon_io_t* monitor_listen_on(struct mon_io_t* mon, in_port_t port, const char* mon_interface, const int phy_interface, const char* wan_interface, const struct in6_addr* multicast, char first);
 #endif /* MONITOR_H */

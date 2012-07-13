@@ -2,11 +2,15 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <ifaddrs.h>
+#include <linux/if_ether.h>
+#include <linux/net_tstamp.h>
 #include <linux/nl80211.h>
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
 #include "debug.h"
@@ -413,3 +417,107 @@ void read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, vo
   }
 }
 
+struct mon_io_t*
+monitor_listen_on(struct mon_io_t* mon, in_port_t port, const char* mon_interface, const int phy_interface, \
+                  const char* wan_interface, const struct in6_addr* multicast, char first)
+{
+  int fd, tmp, so_stamp, tmp_fd;
+  struct ifreq ifreq;
+  unsigned if_id;
+  struct ifaddrs *ifaddr, *head;
+
+  /* Create structure if not present */
+  if (mon == NULL) {
+    mon = (struct mon_io_t*)malloc(sizeof(struct mon_io_t));
+    if (mon == NULL) {
+      PRINTF("Unable to use malloc\n")
+      return NULL;
+    }
+  }
+  memset(mon, 0, sizeof(struct mon_io_t));
+
+  /* Create socket */
+  if ((fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
+    PERROR("socket")
+    return NULL;
+  }
+  mon->fd = fd;
+
+  if (first) {
+    /* Create monitor interface */
+    tmp = open_monitor_interface(mon_interface, phy_interface);
+    if (tmp < 0) {
+      if (tmp == -23) {
+        PRINTF("Warning: interface already exist !\n")
+      } else {
+        PRINTF("Unable to open monitor interface\n")
+        return NULL;
+      }
+    }
+  }
+
+  if_id = if_nametoindex(mon_interface);
+  if (if_id == 0) {
+    PRINTF("Monitor interface lost ....\n")
+    return NULL;
+  }
+  /* Bind Socket */
+  mon->ll_addr.sll_family = AF_PACKET;
+  mon->ll_addr.sll_ifindex = if_id;
+
+  if (bind(fd, (struct sockaddr *)&mon->ll_addr, sizeof(struct sockaddr_ll)) < 0) {
+    PERROR("bind()")
+    return NULL;
+  }
+
+  /* Timestamp incoming packets */
+  so_stamp = SOF_TIMESTAMPING_RX_HARDWARE | SOF_TIMESTAMPING_RX_SOFTWARE | SOF_TIMESTAMPING_SOFTWARE | SOF_TIMESTAMPING_SYS_HARDWARE | SOF_TIMESTAMPING_RAW_HARDWARE;
+  if (setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPING, &so_stamp, sizeof(so_stamp)) < 0) {
+    PERROR("setsockopt(SO_TIMESTAMPING)")
+    return NULL;
+  }
+
+  /* Copy ipv6 addr (multicast)  and port*/
+  memcpy(&mon->multicast, multicast, sizeof(struct in6_addr));
+  mon->port = htons(port);
+
+  /* Find local addresses */
+  tmp_fd = socket(AF_INET6, SOCK_DGRAM, 0);
+  if (tmp_fd < 0) {
+    PERROR("socket")
+    return NULL;
+  }
+
+  snprintf(ifreq.ifr_name, IFNAMSIZ, "%s", wan_interface);
+  if (ioctl(tmp_fd, SIOCGIFHWADDR, (char *)&ifreq) < 0) {
+    PERROR("ioctl(sockfd");
+    return NULL;
+  }
+  memcpy(mon->hw_addr, ifreq.ifr_ifru.ifru_hwaddr.sa_data, 6);
+  close(tmp_fd);
+
+  if (getifaddrs(&ifaddr) < 0) {
+    PERROR("getifaddrs");
+    return NULL;
+  }
+  tmp = 0;
+  for (head = ifaddr; ifaddr != NULL; ifaddr = ifaddr->ifa_next) {
+    if (ifaddr->ifa_addr == NULL || ifaddr->ifa_name == NULL) {
+      continue;
+    }
+    if (ifaddr->ifa_addr->sa_family != AF_INET6) {
+      continue;
+    }
+    if (strcmp(ifaddr->ifa_name, wan_interface) == 0) {
+      if (tmp >= MAX_ADDR) {
+         PRINTF("Too many addr, not able to store them")
+         return NULL;
+      }
+      memcpy(mon->ip_addr[tmp].s6_addr, ((struct sockaddr_in6*)ifaddr->ifa_addr)->sin6_addr.s6_addr, sizeof(struct in6_addr));
+      ++tmp;
+    }
+  }
+  freeifaddrs(head);
+
+  return mon;
+}
