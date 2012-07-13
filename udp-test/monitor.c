@@ -1,12 +1,18 @@
+#include "monitor.h"
+
+#include <assert.h>
 #include <errno.h>
 #include <linux/nl80211.h>
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
-#include <linux/sockios.h>
+#include <time.h>
 #include <unistd.h>
-#include "monitor.h"
+#include "debug.h"
+#include "crc.h"
+#include "radiotap-parser.h"
+#include "network_header.h"
 
 static int error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err, void *arg)
 {
@@ -244,3 +250,166 @@ delete_open_interface:
   send_nl80211_message(delete_interface, interface, 0);
   return 0;
 }
+
+#define READ_CB_MATCH_LOCAL  0x01
+#define READ_CB_MATCH_MULTI  0x02
+
+void read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, void* arg)
+{
+  int tmp;
+  char match;
+  ssize_t len;
+  uint16_t radiotap_len;
+  struct cmsghdr *chdr;
+  struct timespec date;
+  struct timespec *stamp;
+  struct iovec iov;
+  struct ieee80211_radiotap_iterator iterator;
+  struct ieee80211_radiotap_header* hdr;
+  const struct header_80211 *machdr;
+  const struct header_llc   *llchdr;
+  const struct header_ipv6  *iphdr;
+  const struct header_udp   *udphdr;
+
+  assert(in != NULL);
+
+  memset(&in->hdr, 0, sizeof(struct msghdr));
+  in->hdr.msg_iov = &iov;
+  in->hdr.msg_iovlen = 1;
+  iov.iov_base = in->buf;
+  iov.iov_len = BUF_SIZE;
+  in->hdr.msg_control = &in->ctrl;
+  in->hdr.msg_controllen = sizeof(struct control);
+  in->hdr.msg_name = (caddr_t)&(in->ll_addr);
+  in->hdr.msg_namelen = sizeof(struct sockaddr_ll);
+  stamp = &date;
+
+  len = recvmsg(in->fd, &in->hdr, MSG_DONTWAIT);
+  if (len < 0) {
+    PERROR("recvmsg")
+  } else if (len == 0) {
+    PRINTF("Connection Closed\n")
+  } else {
+    tmp = clock_gettime(CLOCK_MONOTONIC, stamp);
+    assert(tmp == 0);
+    for (chdr = CMSG_FIRSTHDR(&in->hdr); chdr; chdr = CMSG_NXTHDR(&in->hdr, chdr)) {
+      if ((chdr->cmsg_level == SOL_SOCKET)
+           && (chdr->cmsg_type == SO_TIMESTAMPING)) {
+        stamp = (struct timespec*) CMSG_DATA(chdr);
+      }
+    }
+
+    if (in->buf[0] != 0 || in->buf[1] != 0) {
+      /* Radiotap starts with 2 zeros */
+      return;
+    }
+    radiotap_len = (((uint16_t) in->buf[3])<<8) + ((uint16_t) in->buf[2]);
+    if (radiotap_len > (unsigned) len) {
+      /* Packet too short */
+      return;
+    }
+    hdr = (struct ieee80211_radiotap_header*) in->buf;
+    if (ieee80211_radiotap_iterator_init(&iterator, hdr , len) != 0) {
+      /* Radiotap error */
+      return;
+    }
+    uint8_t rate = 0;
+    int8_t signal = 0;
+    while ((tmp = ieee80211_radiotap_iterator_next(&iterator, IEEE80211_RADIOTAP_DBM_ANTSIGNAL)) >= 0) {
+      switch(tmp) {
+        case IEEE80211_RADIOTAP_DBM_ANTSIGNAL:
+          signal = (int8_t)  *(iterator.arg);
+          break;
+        case IEEE80211_RADIOTAP_RATE:
+          rate = (uint8_t)  *(iterator.arg);
+          break;
+      }
+    }
+    machdr = (struct header_80211*) (in->buf + radiotap_len);
+    len -= radiotap_len;
+    if ((unsigned)len < sizeof(struct header_80211) + sizeof(struct header_llc) + sizeof(struct header_ipv6) + sizeof(struct header_udp)) {
+      /* Packet too short */
+      return;
+    }
+
+    if (((machdr->fc & 0x000c) >> 2) != 0x02) {
+      /* Non DATA type */
+      return;
+    }
+
+    match = 0;
+    if (memcmp(machdr->da, in->hw_addr, 6) == 0) {
+      match = READ_CB_MATCH_LOCAL;
+    }
+
+    if (machdr->da[0] == 0x33 && machdr->da[1] == 0x33 && (memcmp(machdr->da + 2, in->multicast.s6_addr + 12, 4) == 0)) {
+      match = READ_CB_MATCH_MULTI;
+    }
+
+    if (!match) {
+      return;
+    }
+
+    if (crc32_80211((uint8_t*) machdr, len - 4) != *((uint32_t*)(((uint8_t*) machdr) + (len - 4)))) {
+      /* Bad_ CRC */
+      return;
+    }
+
+    /* Check if there is a QoS field */
+    if ((machdr->fc & 0xf0) == 0x80) {
+      llchdr = (struct header_llc*) (((uint8_t*) machdr) + sizeof (struct header_80211) + 2);
+      len -= 2;
+    } else {
+      llchdr = (struct header_llc*) (machdr + 1);
+    }
+    if (llchdr->type != 0xdd86) {
+      /* Non ipv6 traffic */
+      return;
+    }
+    iphdr = (struct header_ipv6*) (llchdr + 1);
+    if (iphdr->version != 0x06) {
+      /* Non ipv6 traffic */
+      return;
+    }
+    len -= sizeof(struct header_80211) + sizeof(struct header_llc) + sizeof(struct header_ipv6) + sizeof(struct header_udp);
+
+    switch (match) {
+      case READ_CB_MATCH_MULTI:
+        if (memcmp(iphdr->dst, in->multicast.s6_addr16, 16) != 0) {
+          return;
+        }
+        break;
+      case READ_CB_MATCH_LOCAL:
+        for (tmp = 0; tmp < MAX_ADDR; ++tmp) {
+          if (memcmp(iphdr->dst, in->ip_addr[tmp].s6_addr16, 16) == 0) {
+            break;
+          }
+        }
+        if (tmp == MAX_ADDR) {
+          return;
+        }
+        break;
+    }
+
+    if (iphdr->next != 0x11) {
+      /* Not directly UDP */
+      return;
+    }
+
+    udphdr = (struct header_udp*) (iphdr + 1);
+    if (udphdr->dst_port != in->port) {
+      /* Not the good destination */
+      return;
+    }
+
+    len -= 4; /* Forget the radio footer */
+
+    if (ntohs(udphdr->len) != len + sizeof(struct header_udp)) {
+      /* Bad packet : bad length */
+      return;
+    }
+
+    (*consume)(stamp, rate, signal, (struct in6_addr*)iphdr->src, (char*) (udphdr + 1), len, machdr->fc, arg);
+  }
+}
+

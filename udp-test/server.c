@@ -27,30 +27,16 @@
 #include "zutil.h"
 
 /* udp buffers */
-#define MAX_ADDR         3
-#define BUF_SIZE      2048
 #define ADDR_BUF_SIZE  128
 #define HDR_SIZE        16
 #define TIME_SIZE      128
-#define CONTROL_SIZE   512
 
-struct control {
-  struct cmsghdr cm;
-  char control[CONTROL_SIZE];
-};
 struct udp_io_t {
-  struct in6_addr multicast;
-  struct in6_addr ip_addr[MAX_ADDR];
-  struct sockaddr_ll ll_addr;
-  unsigned char hw_addr[6];
-  in_port_t port;
+  struct mon_io_t mon;
   char mon_name[IFNAMSIZ];
   char addr_s[ADDR_BUF_SIZE];
-  char buf[BUF_SIZE];
   char date[TIME_SIZE];
   char header[HDR_SIZE];
-  struct msghdr hdr;
-  struct control ctrl;
   struct zutil zdata;
 };
 
@@ -59,196 +45,56 @@ struct event_base* gbase;
 struct event*      glisten;
 struct event*      gdrop;
 
-#define READ_CB_MATCH_LOCAL  0x01
-#define READ_CB_MATCH_MULTI  0x02
-
 static void drop_cb(int fd, short event, void *arg) {
   char buffer;
   recv(fd, &buffer, 1, 0);
+  printf("DROP\n");
 }
 
-static void read_cb(int fd, short event, void *arg) {
-  int tmp;
-  char match;
-  ssize_t len;
-  uint16_t radiotap_len;
-  struct udp_io_t* in;
-  struct cmsghdr *chdr;
-  struct timespec *stamp;
-  struct timespec date;
-  struct iovec iov;
-  struct ieee80211_radiotap_iterator iterator;
-  struct ieee80211_radiotap_header* hdr;
-  const struct header_80211 *machdr;
-  const struct header_llc   *llchdr;
-  const struct header_ipv6  *iphdr;
-  const struct header_udp   *udphdr;
-  const char *data;
+static void
+consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct in6_addr *from, \
+             const char* data, ssize_t len, uint16_t machdr_fc, void* arg)
+{
+  const char *addr;
   const char *end;
+  int tmp;
+  struct udp_io_t* in;
+
 
   assert(arg != NULL);
   in = (struct udp_io_t*) arg;
 
-  memset(&in->hdr, 0, sizeof(struct msghdr));
-  in->hdr.msg_iov = &iov;
-  in->hdr.msg_iovlen = 1;
-  iov.iov_base = in->buf;
-  iov.iov_len = BUF_SIZE;
-  in->hdr.msg_control = &in->ctrl;
-  in->hdr.msg_controllen = sizeof(struct control);
-  in->hdr.msg_name = (caddr_t)&(in->ll_addr);
-  in->hdr.msg_namelen = sizeof(struct sockaddr_ll);
+  addr = inet_ntop(AF_INET6, from, in->addr_s, ADDR_BUF_SIZE);
+  assert(addr != NULL);
+  add_data(&in->zdata, addr, strlen(addr));
 
-  len = recvmsg(fd, &in->hdr, MSG_DONTWAIT);
-  if (len < 0) {
-    PERROR("recvmsg")
-  } else if (len == 0) {
-    PRINTF("Connection Closed\n")
+  if ((machdr_fc & 0x0800) == 0x0800) {
+    tmp = snprintf(in->header, HDR_SIZE, ",R,%"PRIi8",%"PRIu8, signal, rate);
   } else {
-    tmp = clock_gettime(CLOCK_MONOTONIC, &date);
-    assert(tmp == 0);
-    tmp = snprintf(in->date, TIME_SIZE, ",%lu.%09li\n", date.tv_sec, date.tv_nsec);
-    assert(tmp > 0);
-    for (chdr = CMSG_FIRSTHDR(&in->hdr); chdr; chdr = CMSG_NXTHDR(&in->hdr, chdr)) {
-      if ((chdr->cmsg_level == SOL_SOCKET)
-           && (chdr->cmsg_type == SO_TIMESTAMPING)) {
-        stamp = (struct timespec*) CMSG_DATA(chdr);
-        tmp = snprintf(in->date, TIME_SIZE, ",%ld.%09ld\n", stamp->tv_sec, stamp->tv_nsec);
-        assert(tmp > 0);
-      }
-    }
-
-    if (in->buf[0] != 0 || in->buf[1] != 0) {
-      /* Radiotap starts with 2 zeros */
-      return;
-    }
-    radiotap_len = (((uint16_t) in->buf[3])<<8) + ((uint16_t) in->buf[2]);
-    if (radiotap_len > (unsigned) len) {
-      /* Packet too short */
-      return;
-    }
-    hdr = (struct ieee80211_radiotap_header*) in->buf;
-    if (ieee80211_radiotap_iterator_init(&iterator, hdr , len) != 0) {
-      /* Radiotap error */
-      return;
-    }
-    uint8_t rate = 0;
-    int8_t signal = 0;
-    while ((tmp = ieee80211_radiotap_iterator_next(&iterator, IEEE80211_RADIOTAP_DBM_ANTSIGNAL)) >= 0) {
-      switch(tmp) {
-        case IEEE80211_RADIOTAP_DBM_ANTSIGNAL:
-          signal = (int8_t)  *(iterator.arg);
-          break;
-        case IEEE80211_RADIOTAP_RATE:
-          rate = (uint8_t)  *(iterator.arg);
-          break;
-      }
-    }
-    machdr = (struct header_80211*) (in->buf + radiotap_len);
-    len -= radiotap_len;
-    if ((unsigned)len < sizeof(struct header_80211) + sizeof(struct header_llc) + sizeof(struct header_ipv6) + sizeof(struct header_udp)) {
-      /* Packet too short */
-      return;
-    }
-
-    if (((machdr->fc & 0x000c) >> 2) != 0x02) {
-      /* Non DATA type */
-      return;
-    }
-
-    match = 0;
-    if (memcmp(machdr->da, in->hw_addr, 6) == 0) {
-      match = READ_CB_MATCH_LOCAL;
-    }
-
-    if (machdr->da[0] == 0x33 && machdr->da[1] == 0x33 && (memcmp(machdr->da + 2, in->multicast.s6_addr + 12, 4) == 0)) {
-      match = READ_CB_MATCH_MULTI;
-    }
-
-    if (!match) {
-      return;
-    }
-
-    if (crc32_80211((uint8_t*) machdr, len - 4) != *((uint32_t*)(((uint8_t*) machdr) + (len - 4)))) {
-      /* Bad_ CRC */
-      return;
-    }
-
-    /* Check if there is a QoS field */
-    if ((machdr->fc & 0xf0) == 0x80) {
-      llchdr = (struct header_llc*) (((uint8_t*) machdr) + sizeof (struct header_80211) + 2);
-      len -= 2;
-    } else {
-      llchdr = (struct header_llc*) (machdr + 1);
-    }
-    if (llchdr->type != 0xdd86) {
-      /* Non ipv6 traffic */
-      return;
-    }
-    iphdr = (struct header_ipv6*) (llchdr + 1);
-    if (iphdr->version != 0x06) {
-      /* Non ipv6 traffic */
-      return;
-    }
-    len -= sizeof(struct header_80211) + sizeof(struct header_llc) + sizeof(struct header_ipv6) + sizeof(struct header_udp);
-
-    switch (match) {
-      case READ_CB_MATCH_MULTI:
-        if (memcmp(iphdr->dst, in->multicast.s6_addr16, 16) != 0) {
-          return;
-        }
-        break;
-      case READ_CB_MATCH_LOCAL:
-        for (tmp = 0; tmp < MAX_ADDR; ++tmp) {
-          if (memcmp(iphdr->dst, in->ip_addr[tmp].s6_addr16, 16) == 0) {
-            break;
-          }
-        }
-        if (tmp == MAX_ADDR) {
-          return;
-        }
-        break;
-    }
-
-    if (iphdr->next != 0x11) {
-      /* Not directly UDP */
-      return;
-    }
-
-    udphdr = (struct header_udp*) (iphdr + 1);
-    if (udphdr->dst_port != in->port) {
-      /* Not the good destination */
-      return;
-    }
-
-    len -= 4; /* Forget the radio footer */
-
-    if (ntohs(udphdr->len) != len + sizeof(struct header_udp)) {
-      /* Bad packet : bad length */
-      return;
-    }
-
-    data = inet_ntop(AF_INET6, iphdr->src, in->addr_s, ADDR_BUF_SIZE);
-    assert(data != NULL);
-    add_data(&in->zdata, data, strlen(data));
-
-    if ((machdr->fc & 0x0800) == 0x0800) {
-      tmp = snprintf(in->header, HDR_SIZE, ",R,%"PRIi8",%"PRIu8, signal, rate);
-    } else {
-      tmp = snprintf(in->header, HDR_SIZE, ",,%"PRIi8",%"PRIu8, signal, rate);
-    }
-    assert (tmp > 0);
-    add_data(&in->zdata, in->header, tmp);
-
-    data = (char*) (udphdr + 1);
-    end = memchr(data, '|', len);
-    if (end == NULL) {
-      add_data(&in->zdata, data, len);
-    } else {
-      add_data(&in->zdata, data, end - data);
-    }
-    add_data(&in->zdata, in->date, strlen(in->date));
+    tmp = snprintf(in->header, HDR_SIZE, ",,%"PRIi8",%"PRIu8, signal, rate);
   }
+  assert (tmp > 0);
+  add_data(&in->zdata, in->header, tmp);
+
+  end = memchr(data, '|', len);
+  if (end == NULL) {
+    add_data(&in->zdata, data, len);
+  } else {
+    add_data(&in->zdata, data, end - data);
+  }
+  tmp = snprintf(in->date, TIME_SIZE, ",%ld.%09ld\n", stamp->tv_sec, stamp->tv_nsec);
+  assert(tmp > 0);
+  add_data(&in->zdata, in->date, tmp);
+}
+
+static void
+read_cb(int fd, short event, void *arg)
+{
+  struct udp_io_t* in;
+
+  assert(arg != NULL);
+  in = (struct udp_io_t*) arg;
+  read_and_parse_monitor(&in->mon, consume_data, arg);
 }
 
 static struct event* listen_on(struct event_base* base, in_port_t port, const char* mon_interface, const int phy_interface, const char* wan_interface, const struct in6_addr* multicast, FILE* out, int encode) {
@@ -272,6 +118,8 @@ static struct event* listen_on(struct event_base* base, in_port_t port, const ch
   }
   memset(buffer, 0, sizeof(struct udp_io_t));
 
+  buffer->mon.fd = fd;
+
   /* Create monitor interface */
   tmp = open_monitor_interface(mon_interface, phy_interface);
   if (tmp < 0) {
@@ -290,10 +138,10 @@ static struct event* listen_on(struct event_base* base, in_port_t port, const ch
     return NULL;
   }
   /* Bind Socket */
-  buffer->ll_addr.sll_family = AF_PACKET;
-  buffer->ll_addr.sll_ifindex = if_id;
+  buffer->mon.ll_addr.sll_family = AF_PACKET;
+  buffer->mon.ll_addr.sll_ifindex = if_id;
 
-  if (bind(fd, (struct sockaddr *)&buffer->ll_addr, sizeof(struct sockaddr_ll)) < 0) {
+  if (bind(fd, (struct sockaddr *)&buffer->mon.ll_addr, sizeof(struct sockaddr_ll)) < 0) {
     PERROR("bind()")
     return NULL;
   }
@@ -312,8 +160,8 @@ static struct event* listen_on(struct event_base* base, in_port_t port, const ch
   }
 
   /* Copy ipv6 addr (multicast)  and port*/
-  memcpy(&buffer->multicast, multicast, sizeof(struct in6_addr));
-  buffer->port = htons(port);
+  memcpy(&buffer->mon.multicast, multicast, sizeof(struct in6_addr));
+  buffer->mon.port = htons(port);
 
   /* Find local addresses */
   tmp_fd = socket(AF_INET6, SOCK_DGRAM, 0);
@@ -327,7 +175,7 @@ static struct event* listen_on(struct event_base* base, in_port_t port, const ch
     PERROR("ioctl(sockfd");
     return NULL;
   }
-  memcpy(buffer->hw_addr, ifreq.ifr_ifru.ifru_hwaddr.sa_data, 6);
+  memcpy(buffer->mon.hw_addr, ifreq.ifr_ifru.ifru_hwaddr.sa_data, 6);
   close(tmp_fd);
 
   if (getifaddrs(&ifaddr) < 0) {
@@ -347,7 +195,7 @@ static struct event* listen_on(struct event_base* base, in_port_t port, const ch
          PRINTF("Too many addr, not able to store them")
          return NULL;
       }
-      memcpy(buffer->ip_addr[tmp].s6_addr, ((struct sockaddr_in6*)ifaddr->ifa_addr)->sin6_addr.s6_addr, sizeof(struct in6_addr));
+      memcpy(buffer->mon.ip_addr[tmp].s6_addr, ((struct sockaddr_in6*)ifaddr->ifa_addr)->sin6_addr.s6_addr, sizeof(struct in6_addr));
       ++tmp;
     }
   }
