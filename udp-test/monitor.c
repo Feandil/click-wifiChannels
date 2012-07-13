@@ -281,7 +281,7 @@ void read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, vo
   in->hdr.msg_iov = &iov;
   in->hdr.msg_iovlen = 1;
   iov.iov_base = in->buf;
-  iov.iov_len = BUF_SIZE;
+  iov.iov_len = MON_BUF_SIZE;
   in->hdr.msg_control = &in->ctrl;
   in->hdr.msg_controllen = sizeof(struct control);
   in->hdr.msg_name = (caddr_t)&(in->ll_addr);

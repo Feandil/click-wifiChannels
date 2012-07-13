@@ -9,7 +9,7 @@ int close_interface(const char *interface);
 
 /* mon buffers */
 #define MAX_ADDR         3
-#define BUF_SIZE      2048
+#define MON_BUF_SIZE  2048
 #define CONTROL_SIZE   512
 
 struct control {
@@ -24,7 +24,7 @@ struct mon_io_t {
   unsigned char hw_addr[6];
   in_port_t port;
   int fd;
-  char buf[BUF_SIZE];
+  char buf[MON_BUF_SIZE];
   struct msghdr hdr;
   struct control ctrl;
 };
