@@ -146,18 +146,33 @@ send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
   int pos;
   ssize_t len, sent_len;
   struct udp_io_t *buffer;
+  struct timespec stamp;
+  struct timespec tmp;
+  struct in_air   *output;
 
   buffer = (struct udp_io_t*) periodic->data;
   assert(buffer != NULL);
+  pos = clock_gettime(CLOCK_MONOTONIC, &stamp);
+  assert(pos == 0);
 
   len = 0;
+  output = (struct in_air*) buffer->buf;
   for (pos = 0; pos < LINE_NB; ++pos) {
     if (inc[pos].data.ip.s6_addr32 != 0) {
-      memcpy(buffer->buf + len, &inc[pos].data, sizeof(struct in_air));
+      memcpy(output, &inc[pos].data, sizeof(struct in_air));
+      tmp.tv_nsec = output->stamp.tv_nsec;
+      if (stamp.tv_nsec > tmp.tv_nsec) {
+        output->stamp.tv_nsec = stamp.tv_nsec - tmp.tv_nsec;
+        output->stamp.tv_sec  = stamp.tv_sec - output->stamp.tv_sec;
+      } else {
+        output->stamp.tv_nsec = 1000000000 - tmp.tv_nsec + stamp.tv_nsec;
+        output->stamp.tv_sec  = stamp.tv_sec - output->stamp.tv_sec - 1;
+      }
       len += sizeof(struct in_air);
+      ++output;
     }
   }
-  memset(buffer->buf + len, 0, sizeof(struct in_air));
+  memset(output, 0, sizeof(struct in_air));
   len += sizeof(struct in_air);
 
   sent_len = sendto(buffer->fd, buffer->buf, len, 0, (struct sockaddr *)&buffer->addr, sizeof(struct sockaddr_in6));
@@ -322,6 +337,7 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
             }
           }
         }
+        ++incoming;
       }
     }
   }
