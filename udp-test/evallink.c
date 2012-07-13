@@ -27,7 +27,7 @@
 #define COL_SEP      1
 #define LINE_SEP     1
 #define PAR_SEP      3
-#define FIRST_LINE   3
+#define FIRST_LINE   5
 #define FIR_COL_S   42
 #define SEC_COL_S    8
 #define THI_COL_S    6
@@ -36,6 +36,9 @@
 #define SEC_COL      (FIRST_COL  + COL_SEP + FIR_COL_S)
 #define THIRD_COL    (SEC_COL    + COL_SEP + SEC_COL_S)
 #define FOURTH_COL   (THIRD_COL  + COL_SEP + THI_COL_S)
+#define TITLE_LINE   2
+#define TITLE_COL   22
+#define TITLE_LEN   80
 
 struct udp_io_t {
   int fd;
@@ -64,6 +67,7 @@ struct line {
 
 struct line inc[LINE_NB];
 struct line out[LINE_NB];
+WINDOW * title = NULL;
 char   mon_name[IFNAMSIZ];
 
 /* Event loop */
@@ -140,6 +144,8 @@ ncurses_stop()
   endwin();
 }
 
+static void update_time();
+
 static void
 send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
 {
@@ -155,10 +161,10 @@ send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
   pos = clock_gettime(CLOCK_MONOTONIC, &stamp);
   assert(pos == 0);
 
-  len = 0;
+  len = sizeof(struct in_air);
   output = (struct in_air*) buffer->buf;
   for (pos = 0; pos < LINE_NB; ++pos) {
-    if (inc[pos].data.ip.s6_addr32 != 0) {
+    if (*inc[pos].data.ip.s6_addr32 != 0) {
       memcpy(output, &inc[pos].data, sizeof(struct in_air));
       tmp.tv_nsec = output->stamp.tv_nsec;
       if (stamp.tv_nsec > tmp.tv_nsec) {
@@ -173,7 +179,6 @@ send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
     }
   }
   memset(output, 0, sizeof(struct in_air));
-  len += sizeof(struct in_air);
 
   sent_len = sendto(buffer->fd, buffer->buf, len, 0, (struct sockaddr *)&buffer->addr, sizeof(struct sockaddr_in6));
   if (sent_len == -1) {
@@ -181,6 +186,7 @@ send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
     return;
   }
   assert(sent_len == len);
+  update_time();
 }
 
 static struct ev_periodic*
@@ -232,13 +238,19 @@ send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, cons
   return event;
 }
 
+#define NCURSES_REWRITE_WINDOW_CONTENT(win, ...)  \
+  werase(win);                                    \
+  wmove(win, 0, 0);                               \
+  wprintw(win, __VA_ARGS__);                      \
+  wrefresh(win);
+
 static void inline
 update_time_table(struct line table[], char* tmp, struct timespec *stamp)
 {
   int pos, size;
 
   for (pos = 0; pos < LINE_NB; ++pos) {
-    if (inc[pos].data.ip.s6_addr32 != 0) {
+    if (*table[pos].data.ip.s6_addr32 != 0) {
       if (stamp->tv_nsec == 0 && stamp->tv_sec == 0) {
         size = snprintf(tmp, TMP_BUF, "%ld.%09ld", table[pos].data.stamp.tv_sec, table[pos].data.stamp.tv_nsec);
       } else if (stamp->tv_nsec > table[pos].data.stamp.tv_nsec) {
@@ -247,7 +259,7 @@ update_time_table(struct line table[], char* tmp, struct timespec *stamp)
         size = snprintf(tmp, TMP_BUF, "%ld.%09ld", stamp->tv_sec - table[pos].data.stamp.tv_sec - 1, 1000000000 - table[pos].data.stamp.tv_nsec + stamp->tv_nsec);
       }
       assert(size > 0);
-      wprintw(table[pos].output.db, "%.*s", size, tmp);
+      NCURSES_REWRITE_WINDOW_CONTENT(table[pos].output.time, "%.*s", size, tmp);
     }
   }
 }
@@ -273,6 +285,7 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
              const char* data, ssize_t len, uint16_t machdr_fc, void* arg)
 {
   char tmp[TMP_BUF];
+  const char *ret;
   int size, pos, addr_pos;
   struct mon_io_t *mon;
   struct in_air *incoming;
@@ -280,36 +293,41 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
   mon = (struct mon_io_t*)arg;
   assert(mon != NULL);
 
+  for (addr_pos = 0; addr_pos < MAX_ADDR; ++addr_pos) {
+    if (memcmp(from, &mon->ip_addr[addr_pos], sizeof(struct in6_addr)) == 0) {
+      return;
+    }
+  }
+
   /* First store values in inc */
   for (pos = 0; pos < LINE_NB; ++pos) {
-    if (inc[pos].data.ip.s6_addr32 != 0) {
-      if (memcmp(&inc[pos].data.ip, from, sizeof(struct in6_addr*)) == 0) {
+    if (*inc[pos].data.ip.s6_addr32 != 0) {
+      if (memcmp(&inc[pos].data.ip, from, sizeof(struct in6_addr)) == 0) {
         inc[pos].data.rate = rate;
         inc[pos].data.db = signal;
-        memcpy(&inc[pos].data.stamp, stamp, sizeof(struct timespec*));
+        memcpy(&inc[pos].data.stamp, stamp, sizeof(struct timespec));
         size = snprintf(tmp, TMP_BUF, "%"PRIi8"dBm", signal);
         assert(size > 0);
-        wprintw(inc[pos].output.db, "%.*s", size, tmp);
-        wrefresh(out[pos].output.db);
+        NCURSES_REWRITE_WINDOW_CONTENT(inc[pos].output.db, "%s", tmp);
         size = snprintf(tmp, TMP_BUF, "%"PRIu8"%sMb/s", rate / 2, (rate % 2) ? ".5" : "");
         assert(size > 0);
-        wprintw(inc[pos].output.rate, "%.*s", size, tmp);
-        wrefresh(out[pos].output.rate);
+        NCURSES_REWRITE_WINDOW_CONTENT(inc[pos].output.rate, "%s",tmp);
         break;
       }
     } else {
-      memcpy(&inc[pos].data.ip, from, sizeof(struct in6_addr*));
+      memcpy(&inc[pos].data.ip, from, sizeof(struct in6_addr));
+      ret = inet_ntop(AF_INET6, from, tmp, TMP_BUF);
+      assert(ret != NULL);
+      NCURSES_REWRITE_WINDOW_CONTENT(inc[pos].output.ip, "%s", tmp)
       inc[pos].data.rate = rate;
       inc[pos].data.db = signal;
-      memcpy(&inc[pos].data.stamp, stamp, sizeof(struct timespec*));
+      memcpy(&inc[pos].data.stamp, stamp, sizeof(struct timespec));
       size = snprintf(tmp, TMP_BUF, "%"PRIi8"dBm", signal);
       assert(size > 0);
-      wprintw(inc[pos].output.db, "%.*s", size, tmp);
-      wrefresh(out[pos].output.db);
+      NCURSES_REWRITE_WINDOW_CONTENT(inc[pos].output.db, "%s", tmp);
       size = snprintf(tmp, TMP_BUF, "%"PRIu8"%sMb/s", rate / 2, (rate % 2) ? ".5" : "");
       assert(size > 0);
-      wprintw(inc[pos].output.rate, "%.*s", size, tmp);
-      wrefresh(out[pos].output.rate);
+      NCURSES_REWRITE_WINDOW_CONTENT(inc[pos].output.rate, "%s", tmp);
       break;
     }
   }
@@ -317,22 +335,44 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
   /* Then try to see if our ipaddress is inside thoses */
   for (addr_pos = 0; addr_pos < MAX_ADDR; ++addr_pos) {
     if (IN6_IS_ADDR_LINKLOCAL(&mon->ip_addr[addr_pos])) {
+      if (title == NULL) {
+        title =  newwin(LINE_HEIGHT, TITLE_LEN, TITLE_LINE, TITLE_COL);
+        ret = inet_ntop(AF_INET6, &mon->ip_addr[addr_pos], tmp, TMP_BUF);
+        assert(ret != NULL);
+        NCURSES_REWRITE_WINDOW_CONTENT(title, "%s", tmp)
+        wrefresh(title);
+      }
       incoming = (struct in_air*) data;
-      while (incoming->ip.s6_addr32 != 0) {
-        if (memcmp(&incoming->ip, &mon->ip_addr[addr_pos], sizeof(struct in6_addr*)) == 0) {
+      while (*incoming->ip.s6_addr32 != 0) {
+        if (memcmp(&incoming->ip, &mon->ip_addr[addr_pos], sizeof(struct in6_addr)) == 0) {
           for (pos = 0; pos < LINE_NB; ++pos) {
-            if (inc[pos].data.ip.s6_addr32 != 0) {
-              if (memcmp(&inc[pos].data.ip, from, sizeof(struct in6_addr*)) == 0) {
-                inc[pos].data.rate = incoming->rate;
-                inc[pos].data.db = incoming->db;
-                memcpy(&inc[pos].data.stamp, &incoming->stamp, sizeof(struct timespec*));
+            if (*out[pos].data.ip.s6_addr32 != 0) {
+              if (memcmp(&inc[pos].data.ip, from, sizeof(struct in6_addr)) == 0) {
+                out[pos].data.rate = incoming->rate;
+                out[pos].data.db = incoming->db;
+                size = snprintf(tmp, TMP_BUF, "%"PRIi8"dBm", incoming->db);
+                assert(size > 0);
+                NCURSES_REWRITE_WINDOW_CONTENT(out[pos].output.db, "%s", tmp);
+                size = snprintf(tmp, TMP_BUF, "%"PRIu8"%sMb/s", incoming->rate / 2, (incoming->rate % 2) ? ".5" : "");
+                assert(size > 0);
+                NCURSES_REWRITE_WINDOW_CONTENT(out[pos].output.rate, "%s", tmp);
+                memcpy(&out[pos].data.stamp, &incoming->stamp, sizeof(struct timespec));
                 break;
               }
             } else {
-              memcpy(&inc[pos].data.ip, from, sizeof(struct in6_addr*));
-              inc[pos].data.rate = incoming->rate;
-              inc[pos].data.db = incoming->db;
-              memcpy(&inc[pos].data.stamp, &incoming->stamp, sizeof(struct timespec*));
+              memcpy(&out[pos].data.ip, from, sizeof(struct in6_addr));
+              ret = inet_ntop(AF_INET6, &out[pos].data.ip, tmp, TMP_BUF);
+              assert(ret != NULL);
+              NCURSES_REWRITE_WINDOW_CONTENT(out[pos].output.ip, "%s", tmp)
+              out[pos].data.rate = incoming->rate;
+              out[pos].data.db = incoming->db;
+              size = snprintf(tmp, TMP_BUF, "%"PRIi8"dBm", incoming->db);
+              assert(size > 0);
+              NCURSES_REWRITE_WINDOW_CONTENT(out[pos].output.db, "%s", tmp);
+              size = snprintf(tmp, TMP_BUF, "%"PRIu8"%sMb/s", incoming->rate / 2, (incoming->rate % 2) ? ".5" : "");
+              assert(size > 0);
+              NCURSES_REWRITE_WINDOW_CONTENT(out[pos].output.rate, "%s", tmp);
+              memcpy(&out[pos].data.stamp, &incoming->stamp, sizeof(struct timespec));
               break;
             }
           }
@@ -504,6 +544,9 @@ int main(int argc, char *argv[]) {
       return -3;
     }
   }
+
+  memset(out, 0, sizeof(struct line) * LINE_NB);
+  memset(inc, 0, sizeof(struct line) * LINE_NB);
 
   event_loop = ev_default_loop (EVFLAG_AUTO);
   if((event_killer = (ev_timer*) malloc(sizeof(ev_timer))) == NULL) {
