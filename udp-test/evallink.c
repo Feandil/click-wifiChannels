@@ -3,7 +3,6 @@
 #include <ev.h>
 #include <getopt.h>
 #include <inttypes.h>
-#include <linux/net_tstamp.h>
 #include <linux/sockios.h>
 #include <ncurses.h>
 #include <net/if.h>

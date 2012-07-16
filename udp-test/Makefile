@@ -12,13 +12,14 @@ LDLIBS ?= $(LZ_LIBS)
 
 NL_INCLUDE ?= -I/usr/include/libnl3
 EVENT_INCLUDE ?=
+SOTIMESTAMP_INCLUDE ?=
 
 MONITOR_DEP = monitor.o radiotap-parser.o crc.o
 
 all: server client transfo evallink
 
 monitor.o: monitor.c
-	$(COMPILE.c) $(NL_INCLUDE) $(OUTPUT_OPTION) $<
+	$(COMPILE.c) $(SOTIMESTAMP_INCLUDE) $(NL_INCLUDE) $(OUTPUT_OPTION) $<
 
 server.o: server.c
 	$(COMPILE.c) $(EVENT_INCLUDE) $(OUTPUT_OPTION) $<
