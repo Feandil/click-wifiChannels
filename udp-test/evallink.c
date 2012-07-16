@@ -68,6 +68,10 @@ struct line inc[LINE_NB];
 struct line out[LINE_NB];
 WINDOW * title = NULL;
 char   mon_name[IFNAMSIZ];
+char   static_flags;
+
+#define EVALLINK_FLAG_DAEMON   0x01
+#define EVALLINK_FLAG_NOSEND  0x02
 
 /* Event loop */
 struct ev_loop      *event_loop;
@@ -440,8 +444,10 @@ static void usage(int err, char *name)
   printf("Usage: %s [OPTIONS]\n", name);
   printf("Options:\n");
   printf(" -h, --help           Print this ...\n");
-  printf(" -d, --dest   <addr>  Specify the destination address (default: %s)\n", DEFAULT_ADDRESS);
-  printf(" -p, --port   <port>  Specify the destination port (default: %"PRIu16")\n", DEFAULT_PORT);
+  printf(" -d, --daemon         Launch this program without any output (no ncurses)\n");
+  printf(" -e, --slave          Do not send any packet, supposed to be used when a daemon is running\n");
+  printf(" -a, --addr   <addr>  Specify the multicast address (default: %s)\n", DEFAULT_ADDRESS);
+  printf(" -p, --port   <port>  Specify the multisact port (default: %"PRIu16")\n", DEFAULT_PORT);
   printf(" -s, --sec    <sec>   Specify the interval in second between two packets (default: %i)\n", DEFAULT_TIME_SECOND);
   printf(" -m, --msec   <msec>  Specify the interval in millisecond between two packets (default: %i)\n", DEFAULT_TIME_MILLISECOND);
   printf(" -l, --size   <size>  Specify the size of outgoing packets (default: %i)\n", DEFAULT_SIZE);
@@ -451,7 +457,9 @@ static void usage(int err, char *name)
 
 static const struct option long_options[] = {
   {"help",              no_argument, 0,  'h' },
-  {"dest",        required_argument, 0,  'd' },
+  {"daemon",            no_argument, 0,  'd' },
+  {"slave",             no_argument, 0,  'e' },
+  {"addr",        required_argument, 0,  'a' },
   {"port",        required_argument, 0,  'p' },
   {"sec",         required_argument, 0,  's' },
   {"usec",        required_argument, 0,  'u' },
@@ -474,13 +482,26 @@ int main(int argc, char *argv[]) {
   delay.tv_usec = DEFAULT_TIME_MILLISECOND;
   int size = DEFAULT_SIZE;
   uint32_t scope = 0;
+  static_flags = 0;
 
-  while((opt = getopt_long(argc, argv, "hd:p:s:u:l:i:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "hdea:p:s:u:l:i:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0, argv[0]);
         return 0;
       case 'd':
+        if (static_flags && EVALLINK_FLAG_NOSEND) {
+          usage(1, argv[0]);
+        }
+        static_flags |= EVALLINK_FLAG_DAEMON;
+        break;
+      case 'e':
+        if (static_flags && EVALLINK_FLAG_DAEMON) {
+          usage(1, argv[0]);
+        }
+        static_flags |= EVALLINK_FLAG_NOSEND;
+        break;
+      case 'a':
         addr_s = optarg;
         break;
       case 'p':
@@ -555,10 +576,12 @@ int main(int argc, char *argv[]) {
   ev_init(event_killer, event_end);
 
 
-  send_mess = send_on(port, &addr, 0, delay.tv_sec + (((double) delay.tv_usec) / 1000), interface, scope);
-  if (send_mess == NULL) {
-    PRINTF("Unable to create sending event\n")
-    return -2;
+  if (!(static_flags & EVALLINK_FLAG_NOSEND)) {
+    send_mess = send_on(port, &addr, 0, delay.tv_sec + (((double) delay.tv_usec) / 1000), interface, scope);
+    if (send_mess == NULL) {
+      PRINTF("Unable to create sending event\n")
+      return -2;
+    }
   }
 
   recv_mess = listen_on(port, "mon0", 0, interface, &addr);
@@ -568,12 +591,19 @@ int main(int argc, char *argv[]) {
   }
 
   signal(SIGINT, down);
-  ncurses_init();
+
+  if (!(static_flags & EVALLINK_FLAG_DAEMON)) {
+    ncurses_init();
+  }
 
   ev_loop(event_loop, 0);
 
-  ncurses_stop();
-  free(send_mess);
+  if (!(static_flags & EVALLINK_FLAG_DAEMON)) {
+    ncurses_stop();
+  }
+  if (!(static_flags & EVALLINK_FLAG_NOSEND)) {
+    free(send_mess);
+  }
   free(recv_mess);
   free(event_killer);
   close_interface(mon_name);

@@ -49,7 +49,7 @@ static void event_end(struct ev_loop *loop, struct ev_timer *w, int revents) {
 static void event_cb(struct ev_loop *loop, ev_periodic *periodic, int revents) {
   ssize_t len, sent_len;
 
-  len = snprintf(buffer->buf, BUF_SIZE, ",%f,%"PRIu64"|", periodic->at, buffer->count);
+  len = snprintf(buffer->buf, BUF_SIZE, ",%f,%"PRIu64"|", ev_time(), buffer->count);
   assert(len > 0);
   if (len <= buffer->packet_len) {
     len = buffer->packet_len;

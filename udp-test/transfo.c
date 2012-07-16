@@ -71,7 +71,7 @@ int32_t sec_min, nsec_min;
 
 inline static void extract(char* incoming, uInt len) {
   int ret;
-  char *sec1_pos, *nsec1_pos, *sec2_pos, *nsec2_pos, *count_pos;
+  char *flag, *db, *rate, *sec1_pos, *nsec1_pos, *sec2_pos, *nsec2_pos, *count_pos;
   uint32_t max, tmp;
   int32_t sec1, nsec1, sec2, nsec2, sec, nsec;
   size_t i, j;
@@ -79,11 +79,14 @@ inline static void extract(char* incoming, uInt len) {
   if (len < MIN_LEN) {
     return;
   }
-  MEMCHR(sec1_pos,   incoming, ',', len)
-  MEMCHR(nsec1_pos,  sec1_pos, '.', len)
-  MEMCHR(sec2_pos,  nsec1_pos, ',', len)
-  MEMCHR(nsec2_pos,  sec2_pos, '.', len)
+  MEMCHR(flag,      incoming,  ',', len)
+  MEMCHR(db,        flag,      ',', len)
+  MEMCHR(rate,      db,        ',', len)
+  MEMCHR(sec2_pos,  rate,      ',', len)
+  MEMCHR(nsec2_pos, sec2_pos,  '.', len)
   MEMCHR(count_pos, nsec2_pos, ',', len)
+  MEMCHR(sec1_pos,  count_pos, ',', len)
+  MEMCHR(nsec1_pos, sec1_pos,  '.', len)
 
   SSCANF(sec1,   sec1_pos);
   SSCANF(nsec1, nsec1_pos);
