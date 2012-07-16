@@ -10,11 +10,18 @@ NCURSES_LIBS ?= -lncursesw
 
 LDLIBS ?= $(LZ_LIBS)
 
-CFLAGS += -I/usr/include/libnl3
+NL_INCLUDE ?= -I/usr/include/libnl3
+EVENT_INCLUDE ?=
 
 MONITOR_DEP = monitor.o radiotap-parser.o crc.o
 
 all: server client transfo evallink
+
+monitor.o: monitor.c
+	$(COMPILE.c) $(NL_INCLUDE) $(OUTPUT_OPTION) $<
+
+server.o: server.c
+	$(COMPILE.c) $(EVENT_INCLUDE) $(OUTPUT_OPTION) $<
 
 server: server.o zutil.o $(MONITOR_DEP)
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(EVENT_LIBS) $(RT_LIBS) $(NL_LIBS) -o $@
