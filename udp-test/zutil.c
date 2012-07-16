@@ -6,7 +6,7 @@
 #include "zutil.h"
 
 void
-add_data(struct zutil* in, const char* data, size_t len)
+zadd_data(struct zutil_write* in, const char* data, size_t len)
 {
   int ret;
   assert(in->strm.avail_in == 0);
@@ -29,7 +29,7 @@ add_data(struct zutil* in, const char* data, size_t len)
 }
 
 void
-end_data(struct zutil* in)
+zend_data(struct zutil_write* in)
 {
   size_t available;
   int ret;
@@ -55,7 +55,7 @@ end_data(struct zutil* in)
 }
 
 int
-zinit(struct zutil* buffer, FILE *out, const int encode)
+zinit_write(struct zutil_write* buffer, FILE *out, const int encode)
 {
   int ret;
 

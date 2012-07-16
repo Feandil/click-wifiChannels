@@ -29,7 +29,7 @@ struct udp_io_t {
   char addr_s[ADDR_BUF_SIZE];
   char date[TIME_SIZE];
   char header[HDR_SIZE];
-  struct zutil zdata;
+  struct zutil_write zdata;
 };
 
 /* Event loop */
@@ -58,7 +58,7 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
 
   addr = inet_ntop(AF_INET6, from, in->addr_s, ADDR_BUF_SIZE);
   assert(addr != NULL);
-  add_data(&in->zdata, addr, strlen(addr));
+  zadd_data(&in->zdata, addr, strlen(addr));
 
   if ((machdr_fc & 0x0800) == 0x0800) {
     tmp = snprintf(in->header, HDR_SIZE, ",R,%"PRIi8",%"PRIu8, signal, rate);
@@ -66,17 +66,17 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
     tmp = snprintf(in->header, HDR_SIZE, ",,%"PRIi8",%"PRIu8, signal, rate);
   }
   assert (tmp > 0);
-  add_data(&in->zdata, in->header, tmp);
+  zadd_data(&in->zdata, in->header, tmp);
 
   end = memchr(data, '|', len);
   if (end == NULL) {
-    add_data(&in->zdata, data, len);
+    zadd_data(&in->zdata, data, len);
   } else {
-    add_data(&in->zdata, data, end - data);
+    zadd_data(&in->zdata, data, end - data);
   }
   tmp = snprintf(in->date, TIME_SIZE, ",%ld.%09ld\n", stamp->tv_sec, stamp->tv_nsec);
   assert(tmp > 0);
-  add_data(&in->zdata, in->date, tmp);
+  zadd_data(&in->zdata, in->date, tmp);
 }
 
 static void
@@ -112,7 +112,7 @@ static struct event* listen_on(struct event_base* base, in_port_t port, const ch
   strncpy(buffer->mon_name, mon_interface, IFNAMSIZ);
 
   /* Initialize zlib */
-  tmp = zinit(&buffer->zdata, out, encode);
+  tmp = zinit_write(&buffer->zdata, out, encode);
   if (tmp < 0) {
     return NULL;
   }
@@ -159,7 +159,7 @@ static void down(int sig)
   assert(gdrop != NULL);
   arg = event_get_callback_arg(glisten);
   assert(arg != NULL);
-  end_data(&arg->zdata);
+  zend_data(&arg->zdata);
   close_interface(arg->mon_name);
   close(event_get_fd(glisten));
   close(event_get_fd(gdrop));

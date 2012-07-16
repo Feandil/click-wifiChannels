@@ -7,15 +7,15 @@
 
 #define OUT_BUF_SIZE  1500
 
-struct zutil {
+struct zutil_write {
   char out[OUT_BUF_SIZE];
   z_stream strm;
   FILE *output;
 };
 
 
-int zinit(struct zutil* buffer, FILE *out, const int encode);
-void add_data(struct zutil *in, const char *data, const size_t len);
-void end_data(struct zutil *in);
+int zinit_write(struct zutil_write* buffer, FILE *out, const int encode);
+void zadd_data(struct zutil_write *in, const char *data, const size_t len);
+void zend_data(struct zutil_write *in);
 
 #endif /* ZUTIL_H */
