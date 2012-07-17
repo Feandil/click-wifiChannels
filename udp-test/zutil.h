@@ -3,9 +3,12 @@
 
 #include <zlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 
 #define OUT_BUF_SIZE  1500
+#define IN_BUF_SIZE   1500
+#define INC_BUF_SIZE  1500
 
 struct zutil_write {
   char out[OUT_BUF_SIZE];
@@ -13,9 +16,21 @@ struct zutil_write {
   FILE *output;
 };
 
+struct zutil_read {
+  char in[(2 * IN_BUF_SIZE) + 1];
+  char inc[INC_BUF_SIZE];
+  z_stream strm;
+  char *start;
+  char *end;
+  bool swapped;
+  FILE *input;
+};
 
 int zinit_write(struct zutil_write* buffer, FILE *out, const int encode);
 void zadd_data(struct zutil_write *in, const char *data, const size_t len);
 void zend_data(struct zutil_write *in);
+
+int zinit_read(struct zutil_read* buffer, FILE *in);
+const char* zread_line(struct zutil_read *buffer, ssize_t *len);
 
 #endif /* ZUTIL_H */

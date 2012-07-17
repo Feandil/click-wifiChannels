@@ -33,6 +33,10 @@ client: client.o zutil.o
 transfo: transfo.o
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
+test-zcat: zutil.c
+	$(COMPILE.c) -DTEST $(OUTPUT_OPTION)  $< -o $@.o
+	$(LINK.c) $@.o $(LOADLIBES) $(LDLIBS) -o $@
+
 clean:
 	-rm *.o
 	-rm server
