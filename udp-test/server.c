@@ -40,7 +40,7 @@ struct event*      gdrop;
 static void drop_cb(int fd, short event, void *arg) {
   char buffer;
   recv(fd, &buffer, 1, 0);
-  printf("DROP\n");
+  PRINTF("DROP\n");
 }
 
 static void
