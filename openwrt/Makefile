@@ -34,8 +34,8 @@ define Package/udp-test/Description
 endef
 
 define Build/Compile
-	$(MAKE) -C $(PKG_BUILD_DIR)/udp-test CC='$(TARGET_CC)' CFLAGS='$(TARGET_CFLAGS) -DDEBUG=1' \
-		LDFLAGS='$(TARGET_LDFLAGS)' NL_LIBS='-lnl-tiny' NL_INCLUDE='-I$(STAGING_DIR)/usr/include/libnl-tiny' \
+	$(MAKE) -C $(PKG_BUILD_DIR)/udp-test CC='$(TARGET_CC)' CFLAGS='$(TARGET_CFLAGS)' LDFLAGS='$(TARGET_LDFLAGS)' \
+		NL_LIBS='-lnl-tiny' NL_INCLUDE='-I$(STAGING_DIR)/usr/include/libnl-tiny' \
 		EVENT_INCLUDE='-I$(STAGING_DIR)/usr/include/event2' NCURSES_LIBS='-lncurses' \
 		SOTIMESTAMP_INCLUDE='-I$(LINUX_DIR)/include'
 endef
