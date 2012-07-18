@@ -105,7 +105,9 @@ zutil_read_input(struct zutil_read *buffer)
     }
   }
   ret = inflate(&buffer->strm, Z_NO_FLUSH);
-  assert(ret >= Z_OK);
+  if (ret <= Z_OK) {
+    return (ret - Z_OK);
+  }
   return 0;
 }
 
@@ -137,7 +139,7 @@ zinit_read(struct zutil_read* buffer, FILE *in)
   return 0;
 }
 
-const char*
+char*
 zread_line(struct zutil_read *buffer, ssize_t *len)
 {
   int ret;

@@ -31,6 +31,6 @@ void zadd_data(struct zutil_write *in, const char *data, const size_t len);
 void zend_data(struct zutil_write *in);
 
 int zinit_read(struct zutil_read* buffer, FILE *in);
-const char* zread_line(struct zutil_read *buffer, ssize_t *len);
+char* zread_line(struct zutil_read *buffer, ssize_t *len);
 
 #endif /* ZUTIL_H */
