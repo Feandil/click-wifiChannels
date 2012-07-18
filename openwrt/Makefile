@@ -24,7 +24,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/udp-test
 	SECTION:=net
 	CATEGORY:=Network
-	DEPENDS:=+zlib +librt +libevent2 +libnl-tiny +libncurses
+	DEPENDS:=+zlib +librt +libevent2 +libnl-tiny +libncurses +libev
 	TITLE:=UDP tools for link probing
 	URL:=https://github.com/Feandil/click-wifiChannels
 endef
