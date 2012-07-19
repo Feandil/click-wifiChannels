@@ -210,6 +210,7 @@ zread_line(struct zutil_read *buffer, ssize_t *len)
           }
           memmove(buffer->in + IN_BUF_SIZE, buffer->start, buffer->end - buffer->start);
           memmove(buffer->in + IN_BUF_SIZE + (buffer->end - buffer->start), buffer->in, next - buffer->in);
+          *(buffer->in + IN_BUF_SIZE + *len) = '\0';
           buffer->start = next + 1;
           buffer->end = buffer->in + IN_BUF_SIZE - buffer->strm.avail_out;
           return buffer->in + IN_BUF_SIZE;
@@ -243,6 +244,7 @@ zread_line(struct zutil_read *buffer, ssize_t *len)
           }
           memmove(buffer->in + IN_BUF_SIZE, buffer->start, buffer->end - buffer->start);
           memmove(buffer->in + IN_BUF_SIZE + (buffer->end - buffer->start), buffer->in, IN_BUF_SIZE - buffer->strm.avail_out);
+          *(buffer->in + IN_BUF_SIZE + *len) = '\0';
           buffer->start = buffer->in + IN_BUF_SIZE;
           buffer->end = buffer->in + IN_BUF_SIZE;
           return buffer->in + IN_BUF_SIZE;
