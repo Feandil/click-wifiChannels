@@ -36,7 +36,8 @@ endef
 define Build/Compile
 	$(MAKE) -C $(PKG_BUILD_DIR)/udp-test CC='$(TARGET_CC)' CFLAGS='$(TARGET_CFLAGS)' LDFLAGS='$(TARGET_LDFLAGS)' \
 		NL_LIBS='-lnl-tiny' NL_INCLUDE='-I$(STAGING_DIR)/usr/include/libnl-tiny' \
-		NCURSES_LIBS='-lncurses' SOTIMESTAMP_INCLUDE='-I$(LINUX_DIR)/include'
+		NCURSES_LIBS='-lncurses' SOTIMESTAMP_INCLUDE='-I$(LINUX_DIR)/include' \
+		server client evallink
 endef
 
 define Package/udp-test/install
