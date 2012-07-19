@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=udp-test
-PKG_VERSION:=20120716
+PKG_VERSION:=20120719
 PKG_RELEASE:=1
 PKG_REV:=HEAD
 
@@ -24,7 +24,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/udp-test
 	SECTION:=net
 	CATEGORY:=Network
-	DEPENDS:=+zlib +librt +libevent2 +libnl-tiny +libncurses +libev
+	DEPENDS:=+zlib +librt +libnl-tiny +libncurses +libev
 	TITLE:=UDP tools for link probing
 	URL:=https://github.com/Feandil/click-wifiChannels
 endef
@@ -36,8 +36,7 @@ endef
 define Build/Compile
 	$(MAKE) -C $(PKG_BUILD_DIR)/udp-test CC='$(TARGET_CC)' CFLAGS='$(TARGET_CFLAGS)' LDFLAGS='$(TARGET_LDFLAGS)' \
 		NL_LIBS='-lnl-tiny' NL_INCLUDE='-I$(STAGING_DIR)/usr/include/libnl-tiny' \
-		EVENT_INCLUDE='-I$(STAGING_DIR)/usr/include/event2' NCURSES_LIBS='-lncurses' \
-		SOTIMESTAMP_INCLUDE='-I$(LINUX_DIR)/include'
+		NCURSES_LIBS='-lncurses' SOTIMESTAMP_INCLUDE='-I$(LINUX_DIR)/include'
 endef
 
 define Package/udp-test/install

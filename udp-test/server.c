@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <arpa/inet.h>
 #include <inttypes.h>
-#include <event.h>
+#include <ev.h>
 #include <getopt.h>
 #include <net/if.h>
 #include <netinet/in.h>
@@ -33,13 +33,22 @@ struct udp_io_t {
 };
 
 /* Event loop */
-struct event_base* gbase;
-struct event*      glisten;
-struct event*      gdrop;
+struct ev_loop      *event_loop;
+struct ev_timer   *event_killer;
+struct ev_io         *glisten;
+struct ev_io         *gdrop;
 
-static void drop_cb(int fd, short event, void *arg) {
+static void
+event_end(struct ev_loop *loop, struct ev_timer *w, int revents)
+{
+  ev_unloop(event_loop, EVUNLOOP_ALL);
+}
+
+static void
+drop_cb(struct ev_loop *loop, ev_io *io, int revents)
+{
   char buffer;
-  recv(fd, &buffer, 1, 0);
+  recv(io->fd, &buffer, 1, 0);
   PRINTF("DROP\n");
 }
 
@@ -80,17 +89,21 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
 }
 
 static void
-read_cb(int fd, short event, void *arg)
+read_cb(struct ev_loop *loop, ev_io *io, int revents)
 {
   struct udp_io_t* in;
 
-  assert(arg != NULL);
-  in = (struct udp_io_t*) arg;
-  read_and_parse_monitor(&in->mon, consume_data, arg);
+  in = (struct udp_io_t*) io->data;
+  assert(in != NULL);
+  read_and_parse_monitor(&in->mon, consume_data, in);
 }
 
-static struct event* listen_on(struct event_base* base, in_port_t port, const char* mon_interface, const int phy_interface, const char* wan_interface, const struct in6_addr* multicast, FILE* out, int encode) {
+static struct ev_io*
+listen_on(in_port_t port, const char* mon_interface, const int phy_interface, const char* wan_interface, \
+          const struct in6_addr* multicast, FILE* out, int encode)
+{
   int tmp;
+  struct ev_io* event;
   struct udp_io_t* buffer;
   struct mon_io_t* mon;
 
@@ -118,11 +131,23 @@ static struct event* listen_on(struct event_base* base, in_port_t port, const ch
   }
 
   /* Init event and add it to active events */
-  return event_new(base, buffer->mon.fd, EV_READ | EV_PERSIST, &read_cb, buffer);
+  /* Init event */
+  event = (struct ev_io*) malloc(sizeof(struct ev_io));
+  if (event == NULL) {
+    PRINTF("Unable to use malloc\n")
+    return NULL;
+  }
+  ev_io_init(event, read_cb, buffer->mon.fd, EV_READ);
+  event->data = mon;
+  ev_io_start(event_loop, event);
+  return event;
 }
 
-static struct event* drop_on(struct event_base* base, in_port_t port, struct ipv6_mreq *mreq) {
+static struct ev_io*
+drop_on(in_port_t port, struct ipv6_mreq *mreq)
+{
   int fd, tmp;
+  struct ev_io* event;
   struct sockaddr_in6 ipaddr;
 
   /* Create socket */
@@ -148,25 +173,20 @@ static struct event* drop_on(struct event_base* base, in_port_t port, struct ipv
   }
 
   /* Init event and add it to active events */
-  return event_new(base, fd, EV_READ | EV_PERSIST, &drop_cb, NULL);
+  event = (struct ev_io*) malloc(sizeof(struct ev_io));
+  if (event == NULL) {
+    PRINTF("Unable to use malloc\n")
+    return NULL;
+  }
+  ev_io_init(event, drop_cb, fd, EV_READ);
+  ev_io_start(event_loop, event);
+  return event;
 }
 
 static void down(int sig)
 {
-  struct udp_io_t* arg;
-  assert(gbase != NULL);
-  assert(glisten != NULL);
-  assert(gdrop != NULL);
-  arg = event_get_callback_arg(glisten);
-  assert(arg != NULL);
-  zend_data(&arg->zdata);
-  close_interface(arg->mon_name);
-  close(event_get_fd(glisten));
-  close(event_get_fd(gdrop));
-  event_del(glisten);
-  event_free(glisten);
-  event_base_loopbreak(gbase);
-  event_base_free(gbase);
+  ev_timer_set(event_killer, 0, 0);
+  ev_timer_start(event_loop, event_killer);
 }
 
 /* Default Values */
@@ -331,31 +351,43 @@ int main(int argc, char *argv[]) {
     interface = DEFAULT_INTERFACE;
   }
 
-  gbase = event_base_new();
-  if (gbase == NULL) {
-    PRINTF("Unable to create base (libevent)\n")
+  event_loop = ev_default_loop (EVFLAG_AUTO);
+  if((event_killer = (ev_timer*) malloc(sizeof(ev_timer))) == NULL) {
+    PRINTF("Malloc\n")
     return -1;
   }
+  ev_init(event_killer, event_end);
 
-  glisten = listen_on(gbase, port, "mon0", 0, interface, &multicast, dest, encode);
+  glisten = listen_on(port, "mon0", 0, interface, &multicast, dest, encode);
   if (glisten == NULL) {
     PRINTF("Unable to create listening event (libevent)\n")
     return -2;
   }
-  event_add(glisten, NULL);
 
-  gdrop = drop_on(gbase, port, &mreq);
+  gdrop = drop_on(port, &mreq);
   if (gdrop == NULL) {
     PRINTF("Unable to create listening event (libevent)\n")
     return -2;
   }
-  event_add(gdrop, NULL);
 
   signal(SIGINT, down);
   signal(SIGABRT, down);
   signal(SIGQUIT, down);
   signal(SIGTERM, down);
-  event_base_dispatch(gbase);
+
+  ev_loop(event_loop, 0);
+
+  struct udp_io_t* arg;
+
+  arg = glisten->data;
+  zend_data(&arg->zdata);
+  close_interface(arg->mon_name);
+  close(glisten->fd);
+  close(gdrop->fd);
+  free(glisten);
+  free(gdrop);
+  free(event_killer);
+  free(arg);
 
   return 0;
 }
