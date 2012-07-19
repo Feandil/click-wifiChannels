@@ -154,7 +154,7 @@ read_input(struct extract_io *inc)
 
   return 1;
 exit:
-  printf("Error parsing input file %i\n", inc - in);
+  printf("Error parsing input file %i (last count : %"PRIu64"\n", inc - in, inc->count);
   exit(-3);
 }
 
