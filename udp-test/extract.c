@@ -238,21 +238,19 @@ next(FILE* out)
     tmp = next_input(&in[1]);
     return tmp;
   } else if (age[0] < age[1]) {
-//printf(" a %"PRIi64" et %"PRIi64"\n", age[0], age[1]);
     for(i = age[0]; i > 1; --i) {
       fprintf(out, "0 0\n");
     }
     fprintf(out, "1 0\n");
-    in[1].last_count = in[0].count;
+    in[1].last_count += age[0];
     tmp = next_input(&in[0]);
     return tmp;
   } else /* age[0] > age[1] */ {
-//printf(" b  %"PRIi64" et %"PRIi64"\n", age[0], age[1]);
     for(i = age[1]; i > 1; --i) {
       fprintf(out, "0 0\n");
     }
     fprintf(out, "0 1\n");
-    in[0].last_count = in[1].count;
+    in[0].last_count += age[1];
     tmp = next_input(&in[1]);
     return tmp;
   }
