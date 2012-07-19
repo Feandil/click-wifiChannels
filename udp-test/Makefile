@@ -14,7 +14,7 @@ SOTIMESTAMP_INCLUDE ?=
 
 MONITOR_DEP = monitor.o radiotap-parser.o crc.o
 
-all: server client transfo evallink
+all: server client transfo evallink extract
 
 monitor.o: monitor.c
 	$(COMPILE.c) $(SOTIMESTAMP_INCLUDE) $(NL_INCLUDE) $(OUTPUT_OPTION) $<
