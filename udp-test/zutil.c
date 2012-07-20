@@ -271,8 +271,10 @@ void
 zread_end(struct zutil_read *buffer)
 {
   (void)inflateEnd(&buffer->strm);
-  fclose(buffer->input);
-  buffer->input = NULL;
+  if (buffer->input != NULL) {
+    fclose(buffer->input);
+    buffer->input = NULL;
+  }
 }
 
 #ifdef TEST
