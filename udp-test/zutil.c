@@ -267,6 +267,14 @@ zread_line(struct zutil_read *buffer, ssize_t *len)
   return NULL;
 }
 
+void
+zread_end(struct zutil_read *buffer)
+{
+  (void)inflateEnd(&buffer->strm);
+  fclose(buffer->input);
+  buffer->input = NULL;
+}
+
 #ifdef TEST
 int
 main(int argc, char *argv[])
