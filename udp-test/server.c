@@ -465,11 +465,16 @@ int main(int argc, char *argv[]) {
   close(glisten->fd);
   close(gdrop->fd);
   free(arg->filename);
+  ev_io_stop(event_loop, glisten);
   free(glisten);
+  ev_io_stop(event_loop, gdrop);
   free(gdrop);
+  ev_periodic_stop(event_loop, greload);
   free(greload);
+  ev_timer_stop(event_loop, event_killer);
   free(event_killer);
   free(arg);
+  ev_default_destroy();
 
   return 0;
 }

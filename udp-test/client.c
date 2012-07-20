@@ -253,15 +253,6 @@ int main(int argc, char *argv[]) {
   }
   ev_init(event_killer, event_end);
 
-  /* Create buffer */
-  buffer = (struct udp_io_t *)malloc(sizeof(struct udp_io_t));
-  if (buffer == NULL) {
-    PRINTF("Unable to use malloc\n")
-    return -1;
-  }
-  memset(buffer, 0, sizeof(struct udp_io_t));
-
-
   send_mess = init(port, &addr, 0, delay.tv_sec + (((double) delay.tv_usec) / 1000), count, size, interface, scope);
   if (send_mess == NULL) {
     PRINTF("Unable to create sending event\n")
@@ -269,10 +260,16 @@ int main(int argc, char *argv[]) {
   }
 
   signal(SIGINT, down);
+  signal(SIGQUIT, down);
+  signal(SIGABRT, down);
+  signal(SIGTERM, down);
   ev_loop(event_loop, 0);
 
   free(send_mess);
+  ev_timer_stop(event_loop, event_killer);
   free(event_killer);
+  ev_default_destroy();
 
+  free(buffer);
   return 0;
 }
