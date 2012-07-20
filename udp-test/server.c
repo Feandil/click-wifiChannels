@@ -30,6 +30,9 @@ struct udp_io_t {
   char date[TIME_SIZE];
   char header[HDR_SIZE];
   struct zutil_write zdata;
+  char *filename;
+  int encode;
+  int filename_count;
 };
 
 /* Event loop */
@@ -37,6 +40,7 @@ struct ev_loop      *event_loop;
 struct ev_timer   *event_killer;
 struct ev_io         *glisten;
 struct ev_io         *gdrop;
+struct ev_periodic   *greload;
 
 static void
 event_end(struct ev_loop *loop, struct ev_timer *w, int revents)
@@ -100,7 +104,7 @@ read_cb(struct ev_loop *loop, ev_io *io, int revents)
 
 static struct ev_io*
 listen_on(in_port_t port, const char* mon_interface, const int phy_interface, const char* wan_interface, \
-          const struct in6_addr* multicast, FILE* out, int encode)
+          const struct in6_addr* multicast, FILE* out, int encode, char* filename)
 {
   int tmp;
   struct ev_io* event;
@@ -123,6 +127,8 @@ listen_on(in_port_t port, const char* mon_interface, const int phy_interface, co
   assert(mon == &buffer->mon);
 
   strncpy(buffer->mon_name, mon_interface, IFNAMSIZ);
+  buffer->filename = filename;
+  buffer->encode = encode;
 
   /* Initialize zlib */
   tmp = zinit_write(&buffer->zdata, out, encode);
@@ -183,6 +189,53 @@ drop_on(in_port_t port, struct ipv6_mreq *mreq)
   return event;
 }
 
+static void
+reload_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
+{
+  struct udp_io_t* in;
+  size_t len;
+  FILE* dest;
+  int tmp;
+
+  in = (struct udp_io_t*) periodic->data;
+  assert(in != NULL);
+  if(in->filename == NULL) {
+    fprintf(stderr, "Unable to change the name of the output file: no filename specified");
+    return;
+  }
+  ++in->filename_count;
+  if (in->filename_count >= 1000) {
+    fprintf(stderr, "Unable to change the name of the output file: count >= 1000\n");
+    return;
+  }
+  len = strlen(in->filename);
+  assert(len > 7);
+  snprintf(in->filename + (len - 6), 7, "%03i.gz", in->filename_count);
+
+  /* Try to open the new file */
+  dest = fopen(in->filename, "w");
+  if (dest == NULL) {
+    fprintf(stderr, "Unable to change the name of the output file: Unable to open output file (%s)\n", in->filename);
+    return;
+  }
+
+
+  /* Swap zlib opened stream */
+  zend_data(&in->zdata);
+  memset(&in->zdata, 0, sizeof(struct zutil_write));
+  tmp = zinit_write(&in->zdata, dest, in->encode);
+  assert(tmp >= 0);
+}
+
+static void reload(int sig)
+{
+  if (!(ev_is_active(greload) && ev_is_pending(greload))) {
+    reload_cb(event_loop, greload, SIGHUP);
+  } else {
+    printf("Reload should be triggered now thus just wait\n");
+  }
+}
+
 static void down(int sig)
 {
   ev_timer_set(event_killer, 0, 0);
@@ -195,6 +248,7 @@ static void down(int sig)
 #define DEFAULT_ENCODE 7
 #define DEFAULT_MULTICAST "ff02::1"
 #define DEFAULT_INTERFACE "wlan0"
+#define DEFAULT_RELOAD 0
 
 static void usage(int err, char *name)
 {
@@ -204,6 +258,7 @@ static void usage(int err, char *name)
   printf(" -h, --help           Print this ...\n");
   printf(" -o, --ouput  <file>  Specify the output file (default: standard output)\n");
   printf(" -r, --rand           Randomize the output file by adding a random number\n");
+  printf("     --reload <secs>  Change the output file every <secs> seconds (disabled if <secs> <= 0, disabled by default)\n");
   printf(" -l, --level  [0-9]   Specify the level of the output compression (default : %i)\n", DEFAULT_ENCODE);
   printf(" -p, --port   <port>  Specify the port to listen on (default: %"PRIu16")\n", DEFAULT_PORT);
   printf(" -b           <addr>  Specify the address used for multicast (default : %s)\n", DEFAULT_MULTICAST);
@@ -215,6 +270,7 @@ static void usage(int err, char *name)
 static const struct option long_options[] = {
   {"help",              no_argument, 0,  'h' },
   {"rand",              no_argument, 0,  'r' },
+  {"reload",      required_argument, 0,  'z' },
   {"output",      required_argument, 0,  'o' },
   {"level",       required_argument, 0,  'l' },
   {"port",        required_argument, 0,  'p' },
@@ -235,6 +291,7 @@ int main(int argc, char *argv[]) {
   FILE *randsrc;
   struct in6_addr multicast;
   struct ipv6_mreq mreq;
+  float  reload_timer = DEFAULT_RELOAD;
 
   while((opt = getopt_long(argc, argv, "hro:p:b:i:", long_options, NULL)) != -1) {
     switch(opt) {
@@ -243,6 +300,12 @@ int main(int argc, char *argv[]) {
         return 0;
       case 'r':
         randi = 1;
+        break;
+      case 'z':
+        if (reload_timer != DEFAULT_RELOAD) {
+          usage(1, argv[0]);
+        }
+        sscanf(optarg, "%f", &reload_timer);
         break;
       case 'o':
         filename = optarg;
@@ -297,9 +360,9 @@ int main(int argc, char *argv[]) {
       printf("Bad extension for the output (should be '.gz')\n");
       return -1;
     }
+    *filetemp = '\0';
     if (randi) {
-      *filetemp = '\0';
-      filetemp = malloc(strlen(filename) + 8);
+      filetemp = malloc(strlen(filename) + 12);
       assert(filetemp != NULL);
       randsrc = fopen("/dev/urandom", "r+");
       if (randsrc == NULL) {
@@ -311,12 +374,17 @@ int main(int argc, char *argv[]) {
         PERROR("fread(rand)")
         return -5;
       }
-      snprintf(filetemp, strlen(filename) + 8, "%s-%"PRIu8".gz", filename, randomized);
+      snprintf(filetemp, strlen(filename) + 12, "%s-%"PRIu8".000.gz", filename, randomized);
+      filename = filetemp;
+    } else {
+      filetemp = malloc(strlen(filename) + 8);
+      assert(filetemp != NULL);
+      snprintf(filetemp, strlen(filename) + 8, "%s.000.gz", filename);
       filename = filetemp;
     }
     dest = fopen(filename, "w");
     if (dest == NULL) {
-      printf("Unable to open output file\n");
+      printf("Unable to open output file (%s)\n", filename);
       return -1;
     }
   }
@@ -352,13 +420,14 @@ int main(int argc, char *argv[]) {
   }
 
   event_loop = ev_default_loop (EVFLAG_AUTO);
+
   if((event_killer = (ev_timer*) malloc(sizeof(ev_timer))) == NULL) {
     PRINTF("Malloc\n")
     return -1;
   }
   ev_init(event_killer, event_end);
 
-  glisten = listen_on(port, "mon0", 0, interface, &multicast, dest, encode);
+  glisten = listen_on(port, "mon0", 0, interface, &multicast, dest, encode, filename);
   if (glisten == NULL) {
     PRINTF("Unable to create listening event (libevent)\n")
     return -2;
@@ -370,10 +439,21 @@ int main(int argc, char *argv[]) {
     return -2;
   }
 
+  if((greload = (ev_periodic*) malloc(sizeof(ev_periodic))) == NULL) {
+    PRINTF("Malloc\n")
+    return -1;
+  }
+  ev_periodic_init(greload, reload_cb, ev_now(event_loop), reload_timer, NULL);
+  greload->data = glisten->data;
+  if (reload_timer > 0) {
+    ev_periodic_start(event_loop, greload);
+  }
+
   signal(SIGINT, down);
   signal(SIGABRT, down);
   signal(SIGQUIT, down);
   signal(SIGTERM, down);
+  signal(SIGHUP, reload);
 
   ev_loop(event_loop, 0);
 
@@ -384,8 +464,10 @@ int main(int argc, char *argv[]) {
   close_interface(arg->mon_name);
   close(glisten->fd);
   close(gdrop->fd);
+  free(arg->filename);
   free(glisten);
   free(gdrop);
+  free(greload);
   free(event_killer);
   free(arg);
 
