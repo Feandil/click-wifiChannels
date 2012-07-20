@@ -2,6 +2,8 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <getopt.h>
+#include <gsl/gsl_cdf.h>
+#include <math.h>
 #include <netinet/in.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -11,6 +13,7 @@
 #include "debug.h"
 #include "zutil.h"
 
+#define M_PIl          3.141592653589793238462643383279502884L
 
 /* File reading struct */
 struct extract_io {
@@ -28,6 +31,7 @@ struct extract_io {
 struct extract_io in[MAX_SOURCES];
 uint64_t sync_count_diff;
 double   secure_interval;
+uint64_t u64_stats[2][2];
 
 /* Output */
 FILE* output;
@@ -210,7 +214,7 @@ synchronize_input()
 }
 
 static int
-next(FILE* out)
+next(FILE* out, bool print)
 {
   ssize_t tmp;
   int64_t age[2];
@@ -228,9 +232,15 @@ next(FILE* out)
       exit(4);
     }
     for (i = age[0]; i > 1; --i) {
-      fprintf(out, "0 0\n");
+      if (print) {
+        fprintf(out, "0 0\n");
+      }
+      ++u64_stats[0][0];
     }
-    fprintf(out, "1 1\n");
+    if (print) {
+      fprintf(out, "1 1\n");
+    }
+    ++u64_stats[1][1];
     tmp = next_input(&in[0]);
     if (tmp < 0) {
       return tmp;
@@ -239,21 +249,99 @@ next(FILE* out)
     return tmp;
   } else if (age[0] < age[1]) {
     for(i = age[0]; i > 1; --i) {
-      fprintf(out, "0 0\n");
+      if (print) {
+        fprintf(out, "0 0\n");
+      }
+      ++u64_stats[0][0];
     }
-    fprintf(out, "1 0\n");
+    if (print) {
+      fprintf(out, "1 0\n");
+    }
+    ++u64_stats[1][0];
     in[1].last_count += age[0];
     tmp = next_input(&in[0]);
     return tmp;
   } else /* age[0] > age[1] */ {
     for(i = age[1]; i > 1; --i) {
-      fprintf(out, "0 0\n");
+      if (print) {
+        fprintf(out, "0 0\n");
+      }
+      ++u64_stats[0][0];
     }
-    fprintf(out, "0 1\n");
+      if (print) {
+      fprintf(out, "0 1\n");
+    }
+    ++u64_stats[0][1];
     in[0].last_count += age[1];
     tmp = next_input(&in[1]);
     return tmp;
   }
+}
+
+static long double
+lrs_part(uint64_t nij, uint64_t ni, uint64_t nj, uint64_t n)
+{
+  return ((long double) nij) * logl((((long double) n) * ((long double) nij)) / (((long double) ni) * ((long double) nj)));
+}
+
+static long double
+pcs_part(uint64_t nij, uint64_t ni, uint64_t nj, uint64_t n)
+{
+  long double temp = (((long double) ni) * ((long double) nj)) / ((long double) n);
+  long double square = ((long double) nij) - temp;
+
+  return square * square / temp;
+}
+
+static void
+print_stats()
+{
+  uint64_t partial_i[2];
+  uint64_t partial_j[2];
+  uint64_t total;
+  long double lrs;
+  long double pcs;
+  int i,j;
+
+  memset(partial_i, 0, sizeof(uint64_t[2]));
+  memset(partial_j, 0, sizeof(uint64_t[2]));
+  total = 0;
+  lrs = 0;
+  pcs = 0;
+
+  for (i = 0; i < 2; ++i) {
+    for (j = 0; j < 2; ++j) {
+      total += u64_stats[i][j];
+      partial_i[i] += u64_stats[i][j];
+      partial_j[j] += u64_stats[i][j];
+    }
+  }
+
+  for (i = 0; i < 2; ++i) {
+    for (j = 0; j < 2; ++j) {
+      lrs += lrs_part(u64_stats[i][j], partial_i[i], partial_j[j], total);
+      pcs += pcs_part(u64_stats[i][j], partial_i[i], partial_j[j], total);
+    }
+  }
+
+  printf("Statistics :\n");
+  printf(" Ni,j:\n");
+  for (i = 0; i < 2; ++i) {
+    for (j = 0; j < 2; ++j) {
+      printf("  N%i,%i = %"PRIu64"\n", i, j, u64_stats[i][j]);
+    }
+  }
+  printf(" Ni,.:\n");
+  printf("  N0,. = %"PRIu64"\n", partial_i[0]);
+  printf("  N1,. = %"PRIu64"\n", partial_i[1]);
+  printf(" N.,j:\n");
+  printf("  N.,0 = %"PRIu64"\n", partial_j[0]);
+  printf("  N.,1 = %"PRIu64"\n", partial_j[1]);
+  printf(" Total : %"PRIu64"\n", total);
+  /* Q = p (X > x) */
+  printf(" LRS: p = %f\n", gsl_cdf_chisq_Q((double)(2 * lrs), 1));
+  printf(" PCS: p = %f\n", gsl_cdf_chisq_Q((double)pcs, 1));
+  printf(" 2lrs = %Lf, pcs = %Lf\n", 2 * lrs, pcs);
 }
 
 
@@ -264,11 +352,12 @@ usage(int error, char *name)
   printf("Usage: %s [OPTIONS]\n", name);
   printf("Options:\n");
   printf(" -h, --help           Print this ...\n");
-  printf(" -o, --ouput  <file>  Specify the output file (default: standard output)\n");
+  printf(" -o, --ouput  <file>  Specify the output file for the verbose sequence(default: no output)\n");
+  printf(" -s, --stats          Output to the standard output the statistics of losses\n");
   printf(" -t, --time   <dur>   Specify the expected time slot duration in millisecond\n");
   printf(" -i, --input  <file>  Specify an output file (Need to be present %i times)\n", MAX_SOURCES);
   printf(" -f, --from   <addr>  Specify the source address to be analysed in the last file\n");
-  printf("     --origin         Use the origin timestamp instead of the reception timestamp for the last file");
+  printf("     --origin         Use the origin timestamp instead of the reception timestamp for the last file\n");
 
   exit(error);
 }
@@ -276,10 +365,11 @@ usage(int error, char *name)
 static const struct option long_options[] = {
   {"help",              no_argument, 0,  'h' },
   {"output",      required_argument, 0,  'o' },
+  {"stats",             no_argument, 0,  's' },
   {"time",        required_argument, 0,  't' },
   {"input",       required_argument, 0,  'i' },
   {"from",        required_argument, 0,  'f' },
-  {"origin",            no_argument, 0,  's' },
+  {"origin",            no_argument, 0,  'a' },
   {NULL,                          0, 0,   0  }
 };
 
@@ -290,17 +380,27 @@ main(int argc, char *argv[])
   FILE* tmp;
   char *out_filename = NULL;
   ssize_t sret;
+  bool stats = false;
+  bool print = false;
 
   pos = 0;
   secure_interval = 0;
-  memset(in, 0, 2 * sizeof(struct extract_io));
+  memset(in, 0, MAX_SOURCES * sizeof(struct extract_io));
+  memset(u64_stats, 0, sizeof(uint64_t[2][2]));
 
-  while((opt = getopt_long(argc, argv, "ho:t:i:f:s", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "ho:st:i:f:a", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0, argv[0]);
       case 'o':
         out_filename = optarg;
+        break;
+      case 's':
+        if (stats) {
+          printf("You cannot have more than one -s\n");
+          usage(-2, argv[0]);
+        }
+        stats = true;
         break;
       case 't':
         if (secure_interval != 0) {
@@ -349,7 +449,7 @@ main(int argc, char *argv[])
         }
         in[pos - 1].fixed_ip = true;
         break;
-      case 's':
+      case 'a':
         if (pos < 1) {
           printf("--origin option are not supposed to be before any -i option\n");
           usage(-2, argv[0]);
@@ -390,18 +490,25 @@ main(int argc, char *argv[])
       printf("Unable to open output file\n");
       return -1;
     }
-  } else {
-    output = stdout;
+    print = true;
+  } else if (!stats) {
+    printf("No statistics required, no output file given: nothing to do, abording\n");
+    usage(-2, argv[0]);
   }
 
   synchronize_input();
   printf("Synchronisation obtained at count: %"PRIu64", %"PRIu64"\n", in[0].count, in[1].count);
   do {
-    sret = next(output);
+    sret = next(output, print);
   } while (sret >= 0);
   printf("End at count: %"PRIu64", %"PRIu64"\n", in[0].count, in[1].count);
   if (sret < -1) {
     printf("Error before EOF : %i\n", sret);
   }
+
+  if (stats) {
+    print_stats();
+  }
+
   return 0;
 }

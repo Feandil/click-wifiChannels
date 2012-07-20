@@ -6,6 +6,7 @@ NL_LIBS ?= -lnl-3 -lnl-genl-3
 EV_LIBS ?= -lev
 RT_LIBS ?= -lrt
 NCURSES_LIBS ?= -lncursesw
+MATH_LIBS ?= $(shell pkg-config --libs gsl)
 
 LDLIBS ?= $(LZ_LIBS)
 
@@ -29,7 +30,7 @@ transfo: transfo.o
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
 extract: extract.o zutil.o
-	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) -o $@
+	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(MATH_LIBS) -o $@
 
 test-zcat: zutil.c
 	$(COMPILE.c) -DTEST $(OUTPUT_OPTION)  $< -o $@.o
