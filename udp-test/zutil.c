@@ -97,17 +97,22 @@ zutil_read_input(struct zutil_read *buffer)
   }
   buffer->strm.avail_out = IN_BUF_SIZE;
 
-  if (buffer->strm.avail_in == 0) {
-    buffer->strm.next_in = (Bytef*) buffer->inc;
-    buffer->strm.avail_in = fread(buffer->inc, 1, INC_BUF_SIZE, buffer->input);
-    if (ferror(buffer->input)) {
-      return -2;
+  do {
+    if (buffer->strm.avail_in == 0) {
+      if (feof(buffer->input) != 0) {
+        return 0;
+      }
+      buffer->strm.next_in = (Bytef*) buffer->inc;
+      buffer->strm.avail_in = fread(buffer->inc, 1, INC_BUF_SIZE, buffer->input);
+      if (ferror(buffer->input)) {
+        return -2;
+      }
     }
-  }
-  ret = inflate(&buffer->strm, Z_NO_FLUSH);
-  if (ret <= Z_OK) {
-    return (ret - Z_OK);
-  }
+    ret = inflate(&buffer->strm, Z_NO_FLUSH);
+    if (ret <= Z_OK) {
+      return (ret - Z_OK);
+    }
+  } while (buffer->strm.avail_out != 0);
   return 0;
 }
 

@@ -7,8 +7,8 @@
 
 
 #define OUT_BUF_SIZE  1500
-#define IN_BUF_SIZE   4096
-#define INC_BUF_SIZE  2048
+#define IN_BUF_SIZE   4*4096
+#define INC_BUF_SIZE  4096
 
 struct zutil_write {
   char out[OUT_BUF_SIZE];
