@@ -17,6 +17,8 @@
 
 /* File reading struct */
 struct extract_io {
+  char* filename;
+  int   filename_count;
   struct zutil_read input;
   struct in6_addr     src;
   bool       fixed_ip;
@@ -214,6 +216,46 @@ synchronize_input()
 }
 
 static int
+next_line_or_file(int pos)
+{
+  ssize_t tmp;
+  size_t len;
+  int ret;
+  FILE *src;
+
+  tmp = next_input(&in[pos]);
+  if (tmp != -1) {
+    return tmp;
+  }
+
+  if (in[pos].filename_count < 0) {
+    return -1;
+  }
+  ++in[pos].filename_count;
+  if (in[pos].filename_count > 1000) {
+    return -1;
+  }
+
+  len = strlen(in[pos].filename);
+  assert(len > 7);
+  snprintf(in[pos].filename + (len - 6), 7, "%03i.gz", in[pos].filename_count);
+
+  /* Try to open the new file */
+  src = fopen(in->filename, "r");
+  if (src == NULL) {
+    return -1;
+  }
+
+  zread_end(&in[pos].input);
+  memset(&in[pos].input, 0, sizeof(struct zutil_read));
+  ret = zinit_read(&in[pos].input, src);
+  if (ret < 0) {
+    return ret;
+  }
+  return next_line_or_file(pos);
+}
+
+static int
 next(FILE* out, bool print)
 {
   ssize_t tmp;
@@ -241,11 +283,11 @@ next(FILE* out, bool print)
       fprintf(out, "1 1\n");
     }
     ++u64_stats[1][1];
-    tmp = next_input(&in[0]);
+    tmp = next_line_or_file(0);
     if (tmp < 0) {
       return tmp;
     }
-    tmp = next_input(&in[1]);
+    tmp = next_line_or_file(1);
     return tmp;
   } else if (age[0] < age[1]) {
     for(i = age[0]; i > 1; --i) {
@@ -259,7 +301,7 @@ next(FILE* out, bool print)
     }
     ++u64_stats[1][0];
     in[1].last_count += age[0];
-    tmp = next_input(&in[0]);
+    tmp = next_line_or_file(0);
     return tmp;
   } else /* age[0] > age[1] */ {
     for(i = age[1]; i > 1; --i) {
@@ -273,7 +315,7 @@ next(FILE* out, bool print)
     }
     ++u64_stats[0][1];
     in[0].last_count += age[1];
-    tmp = next_input(&in[1]);
+    tmp = next_line_or_file(1);
     return tmp;
   }
 }
@@ -358,7 +400,7 @@ usage(int error, char *name)
   printf(" -i, --input  <file>  Specify an output file (Need to be present %i times)\n", MAX_SOURCES);
   printf(" -f, --from   <addr>  Specify the source address to be analysed in the last file\n");
   printf("     --origin         Use the origin timestamp instead of the reception timestamp for the last file\n");
-
+  printf(" -r, --rotated        The input file was rotated, use all the rotated files");
   exit(error);
 }
 
@@ -370,6 +412,7 @@ static const struct option long_options[] = {
   {"input",       required_argument, 0,  'i' },
   {"from",        required_argument, 0,  'f' },
   {"origin",            no_argument, 0,  'a' },
+  {"rotated",           no_argument, 0,  'r' },
   {NULL,                          0, 0,   0  }
 };
 
@@ -379,6 +422,7 @@ main(int argc, char *argv[])
   int opt, ret, pos;
   FILE* tmp;
   char *out_filename = NULL;
+  char *tmp_c;
   ssize_t sret;
   bool stats = false;
   bool print = false;
@@ -388,7 +432,7 @@ main(int argc, char *argv[])
   memset(in, 0, MAX_SOURCES * sizeof(struct extract_io));
   memset(u64_stats, 0, sizeof(uint64_t[2][2]));
 
-  while((opt = getopt_long(argc, argv, "ho:st:i:f:a", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "ho:st:i:f:ar", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0, argv[0]);
@@ -429,6 +473,8 @@ main(int argc, char *argv[])
           printf("(-5 == not a .gz input file)\n");
           return -1;
         }
+        in[pos].filename = strdup(optarg);
+        in[pos].filename_count = -1;
         ++pos;
         break;
       case 'f':
@@ -460,6 +506,36 @@ main(int argc, char *argv[])
         }
         assert(pos <= MAX_SOURCES);
         in[pos - 1].origin = true;
+        break;
+      case 'r':
+        if (pos < 1) {
+          printf("--rotated option are not supposed to be before any -i option\n");
+          usage(-2, argv[0]);
+        }
+        if (in[pos - 1].filename_count >= 0) {
+          printf("Why did you put two --rotated on the same -i ?\n");
+          usage(-2, argv[0]);
+        }
+        assert(pos <= MAX_SOURCES);
+        tmp_c = strrchr(in[pos - 1].filename, '.');
+        if (tmp_c == NULL) {
+          printf("Error in filename name\n");
+          usage(-2, argv[0]);
+        }
+        *tmp_c = '\0';
+        tmp_c = strrchr(in[pos - 1].filename, '.');
+        if (tmp_c == NULL) {
+          printf("Error in filename name: that's not a rotated file\n");
+          usage(-2, argv[0]);
+        }
+        ++tmp_c;
+        ret = sscanf(tmp_c, "%i", &in[pos - 1].filename_count);
+        if (ret != 1) {
+          printf("Error in filename name: that's not a rotated file (NaN)\n");
+          usage(-2, argv[0]);
+        }
+        assert(in[pos - 1].filename_count >= 0);
+        *(in[pos - 1].filename + strlen(in[pos - 1].filename)) = '.';
         break;
       default:
         usage(-1, argv[0]);
@@ -501,6 +577,13 @@ main(int argc, char *argv[])
   do {
     sret = next(output, print);
   } while (sret >= 0);
+
+  if (in[0].input.input != NULL) {
+    zread_end(&in[0].input);
+  }
+  if (in[1].input.input != NULL) {
+    zread_end(&in[1].input);
+  }
   printf("End at count: %"PRIu64", %"PRIu64"\n", in[0].count, in[1].count);
   if (sret < -1) {
     printf("Error before EOF : %i\n", sret);
