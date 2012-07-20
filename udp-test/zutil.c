@@ -44,6 +44,7 @@ zend_data(struct zutil_write* in)
       if (fwrite(in->out, 1, available, in->output) != available || ferror(in->output)) {
         PRINTF("Unable to write to outputfile\n")
         (void)deflateEnd(&in->strm);
+        fclose(in->output);
         exit(1);
       }
       in->strm.avail_out = OUT_BUF_SIZE;
@@ -53,6 +54,7 @@ zend_data(struct zutil_write* in)
     assert(ret != Z_STREAM_ERROR);
   } while (in->strm.avail_out != OUT_BUF_SIZE);
   (void)deflateEnd(&in->strm);
+  fclose(in->output);
 }
 
 int
