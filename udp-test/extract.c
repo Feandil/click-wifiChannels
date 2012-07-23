@@ -241,7 +241,7 @@ next_line_or_file(int pos)
   snprintf(in[pos].filename + (len - 6), 7, "%03i.gz", in[pos].filename_count);
 
   /* Try to open the new file */
-  src = fopen(in->filename, "r");
+  src = fopen(in[pos].filename, "r");
   if (src == NULL) {
     return -1;
   }
