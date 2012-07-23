@@ -5,6 +5,7 @@
 #include <gsl/gsl_cdf.h>
 #include <math.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -240,9 +241,11 @@ next_line_or_file(int pos)
   assert(len > 7);
   snprintf(in[pos].filename + (len - 6), 7, "%03i.gz", in[pos].filename_count);
 
+  printf("Using next file, %s: ", in[pos].filename);
   /* Try to open the new file */
   src = fopen(in[pos].filename, "r");
   if (src == NULL) {
+    printf("No such file\n");
     return -1;
   }
 
@@ -250,8 +253,10 @@ next_line_or_file(int pos)
   memset(&in[pos].input, 0, sizeof(struct zutil_read));
   ret = zinit_read(&in[pos].input, src);
   if (ret < 0) {
+    printf("Zlib encoding error or no dat\n");
     return ret;
   }
+  printf("Success\n");
   return next_line_or_file(pos);
 }
 
@@ -416,6 +421,23 @@ static const struct option long_options[] = {
   {NULL,                          0, 0,   0  }
 };
 
+static void
+interrupt(int sig)
+{
+  int i;
+
+  printf("Current state:\n");
+  for(i = 0; i < 2; ++i) {
+    printf("Input %i:\n", i);
+    printf("  Current file: %s\n", in[i].filename);
+    printf("  Current count: %"PRIu64"\n", in[i].count);
+    printf("  Last count: %"PRIu64"\n", in[i].last_count);
+    printf("  Current timestamp : %lf\n", in[i].timestamp);
+  }
+
+  exit(sig);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -571,6 +593,8 @@ main(int argc, char *argv[])
     printf("No statistics required, no output file given: nothing to do, abording\n");
     usage(-2, argv[0]);
   }
+
+  signal(SIGINT, interrupt);
 
   synchronize_input();
   printf("Synchronisation obtained at count: %"PRIu64", %"PRIu64"\n", in[0].count, in[1].count);
