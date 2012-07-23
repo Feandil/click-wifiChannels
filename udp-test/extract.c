@@ -271,6 +271,8 @@ next(FILE* out, bool print)
   age[0] = in[0].count - in[0].last_count;
   age[1] = in[1].count - in[1].last_count;
 
+  assert(age[0] >= 0);
+  assert(age[1] >= 0);
   assert((in[0].last_count - in[1].last_count) == sync_count_diff);
   if (age[0] == age[1]) {
     ts = in[0].timestamp - in[1].timestamp;
