@@ -490,24 +490,66 @@ static void
 print_histo(FILE *histo_output)
 {
   uint32_t i,j;
+  uint64_t max;
 
   for (i = 0; i < histo_mod; ++i) {
     for (j = 0; j < histo_mod - 1; ++j) {
-      printf("%"PRIu64",", compare_histo[(i * histo_mod) + j]);
+      fprintf(histo_output, "%"PRIu64",", compare_histo[(i * histo_mod) + j]);
     }
-    printf("%"PRIu64"\n", compare_histo[(i * histo_mod) + histo_mod - 1]);
+    fprintf(histo_output, "%"PRIu64"\n", compare_histo[(i * histo_mod) + histo_mod - 1]);
   }
-  printf("[");
+  fprintf(histo_output, "[");
   for (i = 0; i < histo_mod - 1; ++i) {
     for (j = 0; j < histo_mod - 1; ++j) {
-      printf("%"PRIu64" ", compare_histo[(i * histo_mod) + j]);
+      fprintf(histo_output, "%"PRIu64" ", compare_histo[(i * histo_mod) + j]);
     }
-    printf("%"PRIu64";", compare_histo[(i * histo_mod) + histo_mod - 1]);
+    fprintf(histo_output, "%"PRIu64";", compare_histo[(i * histo_mod) + histo_mod - 1]);
   }
   for (j = 0; j < histo_mod - 1; ++j) {
-    printf("%"PRIu64" ", compare_histo[((histo_mod - 1) * histo_mod) + j]);
+    fprintf(histo_output, "%"PRIu64" ", compare_histo[((histo_mod - 1) * histo_mod) + j]);
   }
-  printf("%"PRIu64"]\n", compare_histo[((histo_mod - 1) * histo_mod) + histo_mod - 1]);
+  fprintf(histo_output, "%"PRIu64"]\n", compare_histo[((histo_mod - 1) * histo_mod) + histo_mod - 1]);
+
+  fprintf(histo_output, "Log():\n");
+  for (i = 0; i < histo_mod; ++i) {
+    for (j = 0; j < histo_mod - 1; ++j) {
+      fprintf(histo_output, "%Lf,", logl(1 + compare_histo[(i * histo_mod) + j]));
+    }
+    fprintf(histo_output, "%Lf\n", logl(1 + compare_histo[(i * histo_mod) + histo_mod - 1]));
+  }
+  fprintf(histo_output, "[");
+  for (i = 0; i < histo_mod - 1; ++i) {
+    for (j = 0; j < histo_mod - 1; ++j) {
+      fprintf(histo_output, "%Lf ", logl(1 + compare_histo[(i * histo_mod) + j]));
+    }
+    fprintf(histo_output, "%Lf;", logl(1 + compare_histo[(i * histo_mod) + histo_mod - 1]));
+  }
+  for (j = 0; j < histo_mod - 1; ++j) {
+    fprintf(histo_output, "%Lf ", logl(1 + compare_histo[((histo_mod - 1) * histo_mod) + j]));
+  }
+  fprintf(histo_output, "%Lf]\n", logl(1 + compare_histo[((histo_mod - 1) * histo_mod) + histo_mod - 1]));
+
+  max = 10 * compare_histo[((histo_mod - 1)/2 * (histo_mod + 1))];
+  fprintf(histo_output, "Limit at %"PRIi64"\n", max);
+#define LIMIT_MAX_VAL(x) ({ uint64_t val_ = x; (val_ > max) ? (-1) : ((int64_t)val_); })
+  for (i = 0; i < histo_mod; ++i) {
+    for (j = 0; j < histo_mod - 1; ++j) {
+      fprintf(histo_output, "%"PRIi64",", LIMIT_MAX_VAL(compare_histo[(i * histo_mod) + j]));
+    }
+    fprintf(histo_output, "%"PRIi64"\n", LIMIT_MAX_VAL(compare_histo[(i * histo_mod) + histo_mod - 1]));
+  }
+  fprintf(histo_output, "[");
+  for (i = 0; i < histo_mod - 1; ++i) {
+    for (j = 0; j < histo_mod - 1; ++j) {
+      fprintf(histo_output, "%"PRIi64" ", LIMIT_MAX_VAL(compare_histo[(i * histo_mod) + j]));
+    }
+    fprintf(histo_output, "%"PRIi64";", LIMIT_MAX_VAL(compare_histo[(i * histo_mod) + histo_mod - 1]));
+  }
+  for (j = 0; j < histo_mod - 1; ++j) {
+    fprintf(histo_output, "%"PRIi64" ", LIMIT_MAX_VAL(compare_histo[((histo_mod - 1) * histo_mod) + j]));
+  }
+  fprintf(histo_output, "%"PRIi64"]\n", LIMIT_MAX_VAL(compare_histo[((histo_mod - 1) * histo_mod) + histo_mod - 1]));
+
 }
 
 static void
