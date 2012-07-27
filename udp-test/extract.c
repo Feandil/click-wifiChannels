@@ -27,6 +27,7 @@ struct extract_io {
   uint64_t      count;
   uint64_t last_count;
   double     timestamp;
+  uint32_t      histo;
 };
 
 /* Global cache */
@@ -35,6 +36,9 @@ struct extract_io in[MAX_SOURCES];
 uint64_t sync_count_diff;
 double   secure_interval;
 uint64_t u64_stats[2][2];
+uint64_t *compare_histo;
+uint32_t histo_mod;
+int k;
 
 /* Output */
 FILE* output;
@@ -260,6 +264,19 @@ next_line_or_file(int pos)
   return next_line_or_file(pos);
 }
 
+static void
+update_histo(char a, char b)
+{
+  in[0].histo = ((in[0].histo << 1) + a) % histo_mod;
+  in[1].histo = ((in[1].histo << 1) + b) % histo_mod;
+  compare_histo[(in[0].histo << k) + in[1].histo] += 1;
+}
+
+#define UPDATE_HISTO(a,b)      \
+  if (compare_histo != NULL) { \
+    update_histo(a,b);         \
+  }
+
 static int
 next(FILE* out, bool print)
 {
@@ -286,11 +303,13 @@ next(FILE* out, bool print)
           fprintf(out, "0 0\n");
         }
         ++u64_stats[0][0];
+        UPDATE_HISTO(0,0)
       }
       if (print) {
         fprintf(out, "1 1\n");
       }
       ++u64_stats[1][1];
+      UPDATE_HISTO(1,1)
     }
     tmp = next_line_or_file(0);
     if (tmp < 0) {
@@ -304,11 +323,13 @@ next(FILE* out, bool print)
         fprintf(out, "0 0\n");
       }
       ++u64_stats[0][0];
+      UPDATE_HISTO(0,0)
     }
     if (print) {
       fprintf(out, "1 0\n");
     }
     ++u64_stats[1][0];
+    UPDATE_HISTO(1,0)
     in[1].last_count += age[0];
     tmp = next_line_or_file(0);
     return tmp;
@@ -318,11 +339,13 @@ next(FILE* out, bool print)
         fprintf(out, "0 0\n");
       }
       ++u64_stats[0][0];
+      UPDATE_HISTO(0,0)
     }
       if (print) {
       fprintf(out, "0 1\n");
     }
     ++u64_stats[0][1];
+    UPDATE_HISTO(0,1)
     in[0].last_count += age[1];
     tmp = next_line_or_file(1);
     return tmp;
@@ -395,6 +418,29 @@ print_stats()
   printf(" 2lrs = %Lf, pcs = %Lf\n", 2 * lrs, pcs);
 }
 
+static void
+print_histo(FILE *histo_output)
+{
+  uint32_t i,j;
+
+  for (i = 0; i < histo_mod; ++i) {
+    for (j = 0; j < histo_mod - 1; ++j) {
+      printf("%"PRIu64",", compare_histo[(i * histo_mod) + j]);
+    }
+    printf("%"PRIu64"\n", compare_histo[(i * histo_mod) + histo_mod - 1]);
+  }
+  printf("[");
+  for (i = 0; i < histo_mod - 1; ++i) {
+    for (j = 0; j < histo_mod - 1; ++j) {
+      printf("%"PRIu64" ", compare_histo[(i * histo_mod) + j]);
+    }
+    printf("%"PRIu64";", compare_histo[(i * histo_mod) + histo_mod - 1]);
+  }
+  for (j = 0; j < histo_mod - 1; ++j) {
+    printf("%"PRIu64" ", compare_histo[((histo_mod - 1) * histo_mod) + j]);
+  }
+  printf("%"PRIu64"]\n", compare_histo[((histo_mod - 1) * histo_mod) + histo_mod - 1]);
+}
 
 static void
 usage(int error, char *name)
@@ -410,6 +456,8 @@ usage(int error, char *name)
   printf(" -f, --from   <addr>  Specify the source address to be analysed in the last file\n");
   printf("     --origin         Use the origin timestamp instead of the reception timestamp for the last file\n");
   printf(" -r, --rotated        The input file was rotated, use all the rotated files");
+  printf(" -k           <pow>   Size of the stored log (used for compairing sequences), expressed in 2 << <pow>");
+  printf(" -q, --histfile <f>   Name of the file used for the output of the comparaison of sequences\n");
   exit(error);
 }
 
@@ -422,6 +470,7 @@ static const struct option long_options[] = {
   {"from",        required_argument, 0,  'f' },
   {"origin",            no_argument, 0,  'a' },
   {"rotated",           no_argument, 0,  'r' },
+  {"histfile",    required_argument, 0,  'q' },
   {NULL,                          0, 0,   0  }
 };
 
@@ -448,6 +497,8 @@ main(int argc, char *argv[])
   int opt, ret, pos;
   FILE* tmp;
   char *out_filename = NULL;
+  char *histo_filename = NULL;
+  FILE *histo_file = NULL;
   char *tmp_c;
   ssize_t sret;
   bool stats = false;
@@ -457,8 +508,10 @@ main(int argc, char *argv[])
   secure_interval = 0;
   memset(in, 0, MAX_SOURCES * sizeof(struct extract_io));
   memset(u64_stats, 0, sizeof(uint64_t[2][2]));
+  k = 0;
+  compare_histo = NULL;
 
-  while((opt = getopt_long(argc, argv, "ho:st:i:f:ar", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "ho:st:i:f:ark:q:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0, argv[0]);
@@ -563,6 +616,39 @@ main(int argc, char *argv[])
         assert(in[pos - 1].filename_count >= 0);
         *(in[pos - 1].filename + strlen(in[pos - 1].filename)) = '.';
         break;
+      case 'k':
+        if (k != 0) {
+          printf("-k option is not supposed to appear more than once\n");
+          usage(-2, argv[0]);
+        }
+        ret = sscanf(optarg, "%i", &k);
+        if (ret != 1) {
+          printf("Error in -k option: Not a number !\n");
+          usage(-2, argv[0]);
+        }
+        if (k < 0) {
+          printf("Error, k needs to be >= 0\n");
+          usage(-2, argv[0]);
+        }
+        if (k > 15) {
+          printf("Error, k needs to be <= 15\n");
+          usage(-2, argv[0]);
+        }
+        histo_mod = 1 << k;
+        compare_histo = (uint64_t*) malloc((1 << (2 * k)) * sizeof(uint64_t));
+        if (compare_histo == NULL) {
+          printf("Malloc error\n");
+          exit(-1);
+        }
+        memset(compare_histo, 0, (1 << (2 * k)) * sizeof(uint64_t));
+        break;
+      case 'q':
+        if (histo_filename != NULL) {
+          printf("-q option is not supposed to appear more than once\n");
+          usage(-2, argv[0]);
+        }
+        histo_filename = optarg;
+        break;
       default:
         usage(-1, argv[0]);
         break;
@@ -585,6 +671,23 @@ main(int argc, char *argv[])
     usage(-2, argv[0]);
   }
   secure_interval /= 2000;
+
+  if (histo_filename != NULL) {
+    if (k == 0) {
+      printf("There is no default value for k, please specify the size wanted\n");
+      usage(-2, argv[0]);
+    }
+    histo_file = fopen(out_filename, "w");
+    if (histo_file  == NULL) {
+      printf("Unable to open histo output file\n");
+      return -1;
+    }
+  } else {
+    if (k != 0) {
+      printf("Warning, -k option used without specifying file output, falling back to standard output\n");
+    }
+    histo_file = stdout;
+  }
 
   if (out_filename != NULL) {
     output = fopen(out_filename, "w");
@@ -623,6 +726,14 @@ main(int argc, char *argv[])
 
   if (stats) {
     print_stats();
+  }
+
+  if (k != 0) {
+    print_histo(histo_file);
+  }
+
+  if (histo_filename != NULL) {
+    fclose(histo_file);
   }
 
   return 0;
