@@ -16,6 +16,32 @@
 
 #define M_PIl          3.141592653589793238462643383279502884L
 
+/* Stupid dynamic structure */
+#define LIST_STEP 7
+struct array_list_u64 {
+  uint64_t   data[LIST_STEP];
+  struct array_list_u64 *next;
+};
+
+static void
+increment_counter(struct array_list_u64 *list, uint64_t count)
+{
+  assert(count >= 0);
+  assert(list != NULL);
+  if (count >= LIST_STEP) {
+    if (list->next == NULL) {
+      list->next = calloc(1, sizeof(struct array_list_u64));
+      if (list->next == NULL) {
+        printf("Calloc error\n");
+        exit(-1);
+      }
+    }
+    increment_counter(list->next, count - LIST_STEP);
+  } else {
+    list->data[count] += 1;
+  }
+}
+
 /* File reading struct */
 struct extract_io {
   char* filename;
@@ -28,6 +54,7 @@ struct extract_io {
   uint64_t last_count;
   double     timestamp;
   uint32_t      histo;
+  struct array_list_u64 *bursts;
 };
 
 /* Global cache */
@@ -37,11 +64,22 @@ uint64_t sync_count_diff;
 double   secure_interval;
 uint64_t u64_stats[2][2];
 uint64_t *compare_histo;
+struct array_list_u64 *coordbursts;
 uint32_t histo_mod;
 int k;
 
 /* Output */
 FILE* output;
+
+#define ADD_BURST(dest,size)                 \
+  if (dest != NULL) {                        \
+    ({                                       \
+      uint64_t count_ = size - 1;            \
+      if (count_ > 0) {                      \
+        increment_counter(dest, count_ - 1); \
+      }                                      \
+    });                                      \
+  }
 
 static ssize_t
 read_input(struct extract_io *inc)
@@ -163,6 +201,7 @@ read_input(struct extract_io *inc)
     }
   }
 
+  ADD_BURST(inc->bursts, inc->count - inc->last_count)
   return 1;
 exit:
   printf("Error parsing input file %i (last count : %"PRIu64"\n", inc - in, inc->count);
@@ -305,6 +344,7 @@ next(FILE* out, bool print)
         ++u64_stats[0][0];
         UPDATE_HISTO(0,0)
       }
+      ADD_BURST(coordbursts, age[0])
       if (print) {
         fprintf(out, "1 1\n");
       }
@@ -376,6 +416,7 @@ print_stats()
   long double lrs;
   long double pcs;
   int i,j;
+  struct array_list_u64 *temp;
 
   memset(partial_i, 0, sizeof(uint64_t[2]));
   memset(partial_j, 0, sizeof(uint64_t[2]));
@@ -416,6 +457,31 @@ print_stats()
   printf(" LRS: p = %f\n", gsl_cdf_chisq_Q((double)(2 * lrs), 1));
   printf(" PCS: p = %f\n", gsl_cdf_chisq_Q((double)pcs, 1));
   printf(" 2lrs = %Lf, pcs = %Lf\n", 2 * lrs, pcs);
+  printf(" Bursts\n");
+  for (i = 0; i < 2; ++i) {
+    printf("  %i: [", i);
+    temp = in[i].bursts;
+    while (temp->next != NULL) {
+      for (j = 0; j < LIST_STEP; ++j) {
+        printf("%"PRIu64" ", temp->data[j]);
+      }
+    }
+    for (j = 0; j < LIST_STEP - 1; ++j) {
+      printf("%"PRIu64" ", temp->data[j]);
+    }
+    printf("%"PRIu64"]\n", temp->data[LIST_STEP - 1]);
+  }
+  printf("  Both : [");
+  temp = coordbursts;
+  while (temp->next != NULL) {
+    for (j = 0; j < LIST_STEP; ++j) {
+      printf("%"PRIu64" ", temp->data[j]);
+    }
+  }
+  for (j = 0; j < LIST_STEP - 1; ++j) {
+    printf("%"PRIu64" ", temp->data[j]);
+  }
+  printf("%"PRIu64"]\n", temp->data[LIST_STEP - 1]);
 }
 
 static void
@@ -494,7 +560,7 @@ interrupt(int sig)
 int
 main(int argc, char *argv[])
 {
-  int opt, ret, pos;
+  int opt, ret, pos, i;
   FILE* tmp;
   char *out_filename = NULL;
   char *histo_filename = NULL;
@@ -705,6 +771,22 @@ main(int argc, char *argv[])
 
   synchronize_input();
   printf("Synchronisation obtained at count: %"PRIu64", %"PRIu64"\n", in[0].count, in[1].count);
+
+  if (stats) {
+    for (i = 0; i < pos; ++i) {
+      in[i].bursts = calloc(1, sizeof(struct array_list_u64));
+      if (in[i].bursts == NULL) {
+        printf("Calloc error\n");
+        exit(-1);
+      }
+    }
+    coordbursts = calloc(1, sizeof(struct array_list_u64));
+    if (coordbursts == NULL) {
+      printf("Calloc error\n");
+      exit(-1);
+    }
+  }
+
   do {
     sret = next(output, print);
   } while (sret >= 0);
