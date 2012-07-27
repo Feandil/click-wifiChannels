@@ -615,6 +615,10 @@ main(int argc, char *argv[])
     printf("Error before EOF : %i\n", sret);
   }
 
+  if (out_filename != NULL) {
+    fclose(output);
+  }
+
   if (stats) {
     print_stats();
   }
