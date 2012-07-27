@@ -364,6 +364,7 @@ next(FILE* out, bool print)
       }
       ++u64_stats[0][0];
       UPDATE_HISTO(0,0)
+      ADD_BURST(coordbursts, age[0])
     }
     if (print) {
       fprintf(out, "1 0\n");
@@ -380,8 +381,9 @@ next(FILE* out, bool print)
       }
       ++u64_stats[0][0];
       UPDATE_HISTO(0,0)
+      ADD_BURST(coordbursts, age[1])
     }
-      if (print) {
+    if (print) {
       fprintf(out, "0 1\n");
     }
     ++u64_stats[0][1];
@@ -771,6 +773,12 @@ main(int argc, char *argv[])
 
   synchronize_input();
   printf("Synchronisation obtained at count: %"PRIu64", %"PRIu64"\n", in[0].count, in[1].count);
+
+  if (compare_histo != NULL) {
+    for (i = 0; i < pos; ++i) {
+      in[i].histo = histo_mod - 1;
+    }
+  }
 
   if (stats) {
     for (i = 0; i < pos; ++i) {
