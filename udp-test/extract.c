@@ -280,16 +280,18 @@ next(FILE* out, bool print)
       printf("Desynchronisation between %"PRIu64" et %"PRIu64"\n", in[0].count, in[1].count);
       exit(4);
     }
-    for (i = age[0]; i > 1; --i) {
-      if (print) {
-        fprintf(out, "0 0\n");
+    if (age[0] != 0) {
+      for (i = age[0]; i > 1; --i) {
+        if (print) {
+          fprintf(out, "0 0\n");
+        }
+        ++u64_stats[0][0];
       }
-      ++u64_stats[0][0];
+      if (print) {
+        fprintf(out, "1 1\n");
+      }
+      ++u64_stats[1][1];
     }
-    if (print) {
-      fprintf(out, "1 1\n");
-    }
-    ++u64_stats[1][1];
     tmp = next_line_or_file(0);
     if (tmp < 0) {
       return tmp;
