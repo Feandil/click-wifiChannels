@@ -745,12 +745,11 @@ main(int argc, char *argv[])
           usage(-2, argv[0]);
         }
         histo_mod = 1 << k;
-        compare_histo = (uint64_t*) malloc((1 << (2 * k)) * sizeof(uint64_t));
+        compare_histo = calloc((1 << (2 * k)), sizeof(uint64_t));
         if (compare_histo == NULL) {
           printf("Malloc error\n");
           exit(-1);
         }
-        memset(compare_histo, 0, (1 << (2 * k)) * sizeof(uint64_t));
         break;
       case 'q':
         if (histo_filename != NULL) {
