@@ -485,13 +485,16 @@ print_stats()
     printf("%"PRIu64" ", temp->data[j]);
   }
   printf("%"PRIu64"]\n", temp->data[LIST_STEP - 1]);
+
+  printf("Estimation (N0,0) : %lf (VS %"PRIu64")\n", ((double)partial_i[0]) / total * ((double)partial_j[0]), u64_stats[0][0]);
 }
 
 static void
 print_histo(FILE *histo_output)
 {
   uint32_t i,j;
-  uint64_t max;
+  uint64_t max, total;
+  uint64_t *independant;
 
   for (i = 0; i < histo_mod; ++i) {
     for (j = 0; j < histo_mod - 1; ++j) {
@@ -552,6 +555,61 @@ print_histo(FILE *histo_output)
   fprintf(histo_output, "%"PRIi64"]\n", LIMIT_MAX_VAL(compare_histo[((histo_mod - 1) * histo_mod) + histo_mod - 1]));
 #undef LIMIT_MAX_VAL
 
+  fprintf(histo_output, "Trying to visualize difference with independant variables:\n");
+  independant = calloc((1 << (k + 1)), sizeof(uint64_t));
+  total = 0;
+  for (i = 0; i < histo_mod; ++i) {
+    for (j = 0; j < histo_mod; ++j) {
+      independant[i] += compare_histo[(i * histo_mod) + j];
+      independant[j + histo_mod] += compare_histo[(i * histo_mod) + j];
+      total += compare_histo[(i * histo_mod) + j];
+    }
+  }
+  fprintf(histo_output, " Independant:\n");
+
+#define INDEP(i,j)  ((uint64_t)(((long double)(independant[i] * independant[j + histo_mod])) / total))
+  for (i = 0; i < histo_mod; ++i) {
+    fprintf(histo_output, "  ");
+    for (j = 0; j < histo_mod - 1; ++j) {
+      fprintf(histo_output, "%"PRIi64",", INDEP(i,j));
+    }
+    fprintf(histo_output, "%"PRIi64"\n", INDEP(i,histo_mod - 1));
+  }
+  fprintf(histo_output, "  [");
+  for (i = 0; i < histo_mod - 1; ++i) {
+    for (j = 0; j < histo_mod - 1; ++j) {
+      fprintf(histo_output, "%"PRIi64" ", INDEP(i,j));
+    }
+    fprintf(histo_output, "%"PRIi64";", INDEP(i,histo_mod - 1));
+  }
+  for (j = 0; j < histo_mod - 1; ++j) {
+    fprintf(histo_output, "%"PRIi64" ", INDEP(histo_mod - 1, j));
+  }
+  fprintf(histo_output, "%"PRIi64"]\n", INDEP(histo_mod - 1, histo_mod - 1));
+
+  fprintf(histo_output, " Diff:\n");
+#define INDEP_DIFF(i,j)  (compare_histo[((i) * histo_mod) + j] - INDEP(i,j))
+  for (i = 0; i < histo_mod; ++i) {
+    fprintf(histo_output, "  ");
+    for (j = 0; j < histo_mod - 1; ++j) {
+      fprintf(histo_output, "%"PRIi64",", INDEP_DIFF(i,j));
+    }
+    fprintf(histo_output, "%"PRIi64"\n", INDEP_DIFF(i,histo_mod - 1));
+  }
+  fprintf(histo_output, "  [");
+  for (i = 0; i < histo_mod - 1; ++i) {
+    for (j = 0; j < histo_mod - 1; ++j) {
+      fprintf(histo_output, "%"PRIi64" ", INDEP_DIFF(i,j));
+    }
+    fprintf(histo_output, "%"PRIi64";", INDEP_DIFF(i,histo_mod - 1));
+  }
+  for (j = 0; j < histo_mod - 1; ++j) {
+    fprintf(histo_output, "%"PRIi64" ", INDEP_DIFF(histo_mod - 1, j));
+  }
+  fprintf(histo_output, "%"PRIi64"]\n", INDEP_DIFF(histo_mod - 1, histo_mod - 1));
+#undef INDEP_DIFF
+#undef INDEP
+  free(independant);
 }
 
 static void
