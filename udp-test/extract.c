@@ -14,8 +14,6 @@
 #include "debug.h"
 #include "zutil.h"
 
-#define M_PIl          3.141592653589793238462643383279502884L
-
 /* Stupid dynamic structure */
 #define LIST_STEP 7
 struct array_list_u64 {
@@ -394,6 +392,9 @@ next(FILE* out, bool print)
   }
 }
 
+#undef UPDATE_HISTO
+#undef ADD_BURST
+
 static long double
 lrs_part(uint64_t nij, uint64_t ni, uint64_t nj, uint64_t n)
 {
@@ -549,6 +550,7 @@ print_histo(FILE *histo_output)
     fprintf(histo_output, "%"PRIi64" ", LIMIT_MAX_VAL(compare_histo[((histo_mod - 1) * histo_mod) + j]));
   }
   fprintf(histo_output, "%"PRIi64"]\n", LIMIT_MAX_VAL(compare_histo[((histo_mod - 1) * histo_mod) + histo_mod - 1]));
+#undef LIMIT_MAX_VAL
 
 }
 
