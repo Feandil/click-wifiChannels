@@ -50,7 +50,8 @@ struct extract_io {
   bool         origin;
   uint64_t      count;
   uint64_t last_count;
-  double     timestamp;
+  double    timestamp;
+  int8_t       signal;
   uint32_t      histo;
   struct array_list_u64 *bursts;
 };
@@ -86,6 +87,7 @@ read_input(struct extract_io *inc)
   char *buffer, *next;
   struct in6_addr ip;
   int tmp;
+  int8_t old_signal;
 
   buffer = zread_line(&inc->input, &len);
   if (buffer == NULL) {
@@ -135,10 +137,17 @@ read_input(struct extract_io *inc)
   len -= (next - buffer);
   buffer = next;
 
-  /* Skip the signal field */
+  /* Store the signal strengh */
   next = memchr(buffer, ',', len);
   if (next == NULL) {
     printf("Bad input format (no closing ',' for the signal field : ''%.*s'')\n", len, buffer);
+    goto exit;
+  }
+  *next = '\0';
+  old_signal = inc->signal;
+  tmp = sscanf(buffer, "%"SCNd8, &inc->signal);
+  if (tmp != 1) {
+    printf("Bad input format (count isn't a int8: ''%.*s'')\n", len, buffer);
     goto exit;
   }
   ++next;
@@ -344,7 +353,7 @@ next(FILE* out, bool print)
       }
       ADD_BURST(coordbursts, age[0])
       if (print) {
-        fprintf(out, "1 1\n");
+        fprintf(out, "1 1 | %"PRIi8" - %"PRIi8"\n", in[0].signal, in[1].signal);
       }
       ++u64_stats[1][1];
       UPDATE_HISTO(1,1)
@@ -365,7 +374,7 @@ next(FILE* out, bool print)
       ADD_BURST(coordbursts, age[0])
     }
     if (print) {
-      fprintf(out, "1 0\n");
+      fprintf(out, "1 0 | %"PRIi8" - %"PRIi8"\n", in[0].signal, 0);
     }
     ++u64_stats[1][0];
     UPDATE_HISTO(1,0)
@@ -382,7 +391,7 @@ next(FILE* out, bool print)
       ADD_BURST(coordbursts, age[1])
     }
     if (print) {
-      fprintf(out, "0 1\n");
+      fprintf(out, "0 1 | %"PRIi8" - %"PRIi8"\n", 0, in[1].signal);
     }
     ++u64_stats[0][1];
     UPDATE_HISTO(0,1)
