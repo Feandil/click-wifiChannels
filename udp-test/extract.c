@@ -506,6 +506,7 @@ print_stats()
       for (j = 0; j < LIST_STEP; ++j) {
         printf("%"PRIu64" ", temp->data[j]);
       }
+      temp = temp->next;
     }
     for (j = 0; j < LIST_STEP - 1; ++j) {
       printf("%"PRIu64" ", temp->data[j]);
@@ -518,6 +519,7 @@ print_stats()
     for (j = 0; j < LIST_STEP; ++j) {
       printf("%"PRIu64" ", temp->data[j]);
     }
+    temp = temp->next;
   }
   for (j = 0; j < LIST_STEP - 1; ++j) {
     printf("%"PRIu64" ", temp->data[j]);
