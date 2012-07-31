@@ -571,6 +571,11 @@ print_signal_stats(FILE *signal_output)
     fprintf(signal_output, "%"PRIu64"]\n", in[i].signal_strengh[UINT8_MAX]);
   }
   fprintf(signal_output, " Signal Matrix:\n");
+  fprintf(signal_output, "  (Axis : [");
+  for (i = INT8_MAX + 1; i < UINT8_MAX; ++i) {
+    fprintf(signal_output, "%"PRIi8" ", (int8_t)i);
+  }
+  fprintf(signal_output, "%"PRIi8"])\n", (int8_t)UINT8_MAX);
   fprintf(signal_output, "[");
   for (i = INT8_MAX + 1; i < UINT8_MAX; ++i) {
     for (j = INT8_MAX + 1; j < UINT8_MAX; ++j) {
