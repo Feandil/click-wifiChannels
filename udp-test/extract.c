@@ -487,6 +487,17 @@ print_stats()
   printf("%"PRIu64"]\n", temp->data[LIST_STEP - 1]);
 
   printf("Estimation (N0,0) : %lf (VS %"PRIu64")\n", ((double)partial_i[0]) / total * ((double)partial_j[0]), u64_stats[0][0]);
+
+  printf("Simple model (0,. and .,0 independant, common error q):\n");
+
+  long double x,y,z;
+  x = u64_stats[0][0] / ((long double) total);
+  y = u64_stats[0][1] / ((long double) total);
+  z = u64_stats[1][0] / ((long double) total);
+
+  printf(" 0,. = %Lf\n", y / (1 - x - z));
+  printf(" .,0 = %Lf\n", z / (1 - x - y));
+  printf(" q = %Lf\n", (x * y + z * y + z * x + x * x - x) / (x + y + z - 1));
 }
 
 static void
