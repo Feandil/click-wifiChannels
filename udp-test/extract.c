@@ -53,6 +53,14 @@ struct extract_io {
   double    timestamp;
   int8_t       signal;
   uint32_t      histo;
+  long double signal_m;
+  long double signal_a;
+  long double signal_b;
+  long double signal_e;
+  uint64_t  signal_m_c;
+  uint64_t signal_ab_c;
+  uint64_t  signal_e_c;
+  uint64_t signal_strengh[UINT8_MAX + 1];
   struct array_list_u64 *bursts;
 };
 
@@ -66,6 +74,7 @@ uint64_t *compare_histo;
 struct array_list_u64 *coordbursts;
 uint32_t histo_mod;
 int k;
+uint64_t signals[UINT8_MAX + 1][UINT8_MAX + 1];
 
 /* Output */
 FILE* output;
@@ -209,6 +218,13 @@ read_input(struct extract_io *inc)
   }
 
   ADD_BURST(inc->bursts, inc->count - inc->last_count)
+  if (inc->count - inc->last_count > 1) {
+    inc->signal_b += old_signal;
+    inc->signal_a += inc->signal;
+    ++inc->signal_ab_c;
+  }
+  inc->signal_strengh[(uint8_t)inc->signal] += 1;
+
   return 1;
 exit:
   printf("Error parsing input file %i (last count : %"PRIu64"\n", inc - in, inc->count);
@@ -357,6 +373,11 @@ next(FILE* out, bool print)
       }
       ++u64_stats[1][1];
       UPDATE_HISTO(1,1)
+      ++signals[(uint8_t)in[0].signal][(uint8_t)in[1].signal];
+      in[0].signal_m += in[0].signal;
+      in[1].signal_m += in[1].signal;
+      ++in[0].signal_m_c;
+      ++in[1].signal_m_c;
     }
     tmp = next_line_or_file(0);
     if (tmp < 0) {
@@ -378,6 +399,10 @@ next(FILE* out, bool print)
     }
     ++u64_stats[1][0];
     UPDATE_HISTO(1,0)
+    ++signals[(uint8_t)in[0].signal][INT8_MAX + 1];
+    in[0].signal_e += in[0].signal;
+    ++in[0].signal_e_c;
+    ++in[1].signal_m_c;
     in[1].last_count += age[0];
     tmp = next_line_or_file(0);
     return tmp;
@@ -395,6 +420,10 @@ next(FILE* out, bool print)
     }
     ++u64_stats[0][1];
     UPDATE_HISTO(0,1)
+    ++signals[INT8_MAX + 1][(uint8_t)in[0].signal];
+    in[1].signal_e += in[1].signal;
+    ++in[0].signal_m_c;
+    ++in[1].signal_e_c;
     in[0].last_count += age[1];
     tmp = next_line_or_file(1);
     return tmp;
@@ -507,6 +536,50 @@ print_stats()
   printf(" 0,. = %Lf\n", y / (1 - x - z));
   printf(" .,0 = %Lf\n", z / (1 - x - y));
   printf(" q = %Lf\n", (x * y + z * y + z * x + x * x - x) / (x + y + z - 1));
+}
+
+static void
+print_signal_stats(FILE *signal_output)
+{
+  int i,j;
+
+  for (i = 0; i < 2; ++i) {
+    in[i].signal_e /= (in[i].signal_e_c);
+    in[i].signal_m /= (in[i].signal_m_c);
+    in[i].signal_b /= (in[i].signal_ab_c);
+    in[i].signal_a /= (in[i].signal_ab_c);
+  }
+
+  fprintf(signal_output, "Signal strengh:\n");
+  fprintf(signal_output, "  Average : %Lf - %Lf  (%"PRIu64"-%"PRIu64")\n", in[0].signal_m, in[1].signal_m, in[0].signal_m_c, in[1].signal_m_c);
+  fprintf(signal_output, "  Error on the other side: %Lf - %Lf  (%"PRIu64"-%"PRIu64")\n", in[0].signal_e, in[1].signal_e, in[0].signal_e_c, in[1].signal_e_c);
+  fprintf(signal_output, "  Before error: %Lf - %Lf  (%"PRIu64"-%"PRIu64")\n", in[0].signal_b, in[1].signal_b, in[0].signal_ab_c, in[1].signal_ab_c);
+  fprintf(signal_output, "  After error: %Lf - %Lf  (%"PRIu64"-%"PRIu64")\n", in[0].signal_a, in[1].signal_a, in[0].signal_ab_c, in[1].signal_ab_c);
+  fprintf(signal_output, " Graph:\n");
+  fprintf(signal_output, "[");
+  for (i = INT8_MAX + 1; i < UINT8_MAX; ++i) {
+    fprintf(signal_output, "%"PRIi8" ", (int8_t)i);
+  }
+  fprintf(signal_output, "%"PRIi8"]\n", (int8_t)UINT8_MAX);
+  for (i = 0; i < 2; ++i) {
+    fprintf(signal_output, "[");
+    for (j = INT8_MAX + 1; j < UINT8_MAX; ++j) {
+      fprintf(signal_output, "%"PRIu64" ", in[i].signal_strengh[j]);
+    }
+    fprintf(signal_output, "%"PRIu64"]\n", in[i].signal_strengh[UINT8_MAX]);
+  }
+  fprintf(signal_output, " Signal Matrix:\n");
+  fprintf(signal_output, "[");
+  for (i = INT8_MAX + 1; i < UINT8_MAX; ++i) {
+    for (j = INT8_MAX + 1; j < UINT8_MAX; ++j) {
+      fprintf(signal_output, "%"PRIu64" ", signals[i][j]);
+    }
+    fprintf(signal_output, "%"PRIu64"; ", signals[i][UINT8_MAX]);
+  }
+  for (j = INT8_MAX + 1; j < UINT8_MAX; ++j) {
+    fprintf(signal_output, "%"PRIu64" ", signals[UINT8_MAX][j]);
+  }
+  fprintf(signal_output, "%"PRIu64"]\n", signals[UINT8_MAX][UINT8_MAX]);
 }
 
 static void
@@ -648,6 +721,7 @@ usage(int error, char *name)
   printf(" -r, --rotated        The input file was rotated, use all the rotated files");
   printf(" -k           <pow>   Size of the stored log (used for compairing sequences), expressed in 2 << <pow>");
   printf(" -q, --histfile <f>   Name of the file used for the output of the comparaison of sequences\n");
+  printf(" -p, --signal=[file]  Turn on the output of signal related statistics. If [file] is specified, use [file] for the output. Use the standard output by default\n");
   exit(error);
 }
 
@@ -661,6 +735,7 @@ static const struct option long_options[] = {
   {"origin",            no_argument, 0,  'a' },
   {"rotated",           no_argument, 0,  'r' },
   {"histfile",    required_argument, 0,  'q' },
+  {"signal",      optional_argument, 0,  'p' },
   {NULL,                          0, 0,   0  }
 };
 
@@ -689,6 +764,7 @@ main(int argc, char *argv[])
   char *out_filename = NULL;
   char *histo_filename = NULL;
   FILE *histo_file = NULL;
+  FILE *signal_output = NULL;
   char *tmp_c;
   ssize_t sret;
   bool stats = false;
@@ -701,7 +777,7 @@ main(int argc, char *argv[])
   k = 0;
   compare_histo = NULL;
 
-  while((opt = getopt_long(argc, argv, "ho:st:i:f:ark:q:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "ho:st:i:f:ark:q:p::", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0, argv[0]);
@@ -838,14 +914,29 @@ main(int argc, char *argv[])
         }
         histo_filename = optarg;
         break;
+      case 'p':
+        if (signal_output != NULL) {
+          printf("-p option is not supposed to appear more than once\n");
+          usage(-2, argv[0]);
+        }
+        if ((optarg != NULL) && (*optarg == '=')) {
+          signal_output = fopen(optarg + 1, "w");
+          if (signal_output  == NULL) {
+            printf("Unable to open signal output file\n");
+            return -1;
+          }
+        } else {
+          signal_output = stdout;
+        }
+        break;
       default:
         usage(-1, argv[0]);
         break;
     }
   }
 
- if(argc > optind) {
-    printf("Too much options\n");
+ if (argc > optind) {
+    printf("Too much options (Be sure to use an \"=\" for optional arguments)\n");
     usage(-2, argv[0]);
     return 1;
   }
@@ -945,6 +1036,13 @@ main(int argc, char *argv[])
 
   if (histo_filename != NULL) {
     fclose(histo_file);
+  }
+
+  if (signal_output != NULL) {
+    print_signal_stats(signal_output);
+    if (signal_output != stdout) {
+      fclose(signal_output);
+    }
   }
 
   return 0;
