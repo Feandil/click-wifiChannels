@@ -964,7 +964,7 @@ main(int argc, char *argv[])
       printf("There is no default value for k, please specify the size wanted\n");
       usage(-2, argv[0]);
     }
-    histo_file = fopen(out_filename, "w");
+    histo_file = fopen(histo_filename, "w");
     if (histo_file  == NULL) {
       printf("Unable to open histo output file\n");
       return -1;
