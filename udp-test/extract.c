@@ -392,8 +392,8 @@ next(FILE* out, bool print)
       }
       ++u64_stats[0][0];
       UPDATE_HISTO(0,0)
-      ADD_BURST(coordbursts, age[0])
     }
+    ADD_BURST(coordbursts, age[0])
     if (print) {
       fprintf(out, "1 0 | %"PRIi8" - %"PRIi8"\n", in[0].signal, 0);
     }
@@ -413,8 +413,8 @@ next(FILE* out, bool print)
       }
       ++u64_stats[0][0];
       UPDATE_HISTO(0,0)
-      ADD_BURST(coordbursts, age[1])
     }
+    ADD_BURST(coordbursts, age[1])
     if (print) {
       fprintf(out, "0 1 | %"PRIi8" - %"PRIi8"\n", 0, in[1].signal);
     }
