@@ -676,6 +676,22 @@ print_histo(FILE *histo_output)
     fprintf(histo_output, "%"PRIi64" ", INDEP_DIFF(histo_mod - 1, j));
   }
   fprintf(histo_output, "%"PRIi64"]\n", INDEP_DIFF(histo_mod - 1, histo_mod - 1));
+
+  fprintf(histo_output, " Log diff:\n");
+#define SIGNED_LOG(a) ({ int64_t a_ = a; a_ >= 0 ? logl(1 + (long double)a_) : -logl(-(long double)a_); })
+  fprintf(histo_output, "  [");
+  for (i = 0; i < histo_mod - 1; ++i) {
+    for (j = 0; j < histo_mod - 1; ++j) {
+      fprintf(histo_output, "%Lf ", SIGNED_LOG(INDEP_DIFF(i,j)));
+    }
+    fprintf(histo_output, "%Lf;", SIGNED_LOG(INDEP_DIFF(i,histo_mod - 1)));
+  }
+  for (j = 0; j < histo_mod - 1; ++j) {
+    fprintf(histo_output, "%Lf ", SIGNED_LOG(INDEP_DIFF(histo_mod - 1, j)));
+  }
+  fprintf(histo_output, "%Lf]\n", SIGNED_LOG(INDEP_DIFF(histo_mod - 1, histo_mod - 1)));
+
+#undef SIGNED_LOG
 #undef INDEP_DIFF
 #undef INDEP
   free(independant);
