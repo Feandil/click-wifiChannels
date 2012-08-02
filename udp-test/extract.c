@@ -498,6 +498,7 @@ print_stats()
   printf(" LRS: p = %f\n", gsl_cdf_chisq_Q((double)(2 * lrs), 1));
   printf(" PCS: p = %f\n", gsl_cdf_chisq_Q((double)pcs, 1));
   printf(" 2lrs = %Lf, pcs = %Lf\n", 2 * lrs, pcs);
+
   printf(" Bursts\n");
   for (i = 0; i < 2; ++i) {
     printf("  %i: [", i);
@@ -596,12 +597,6 @@ print_histo(FILE *histo_output)
   uint64_t max, total;
   uint64_t *independant;
 
-  for (i = 0; i < histo_mod; ++i) {
-    for (j = 0; j < histo_mod - 1; ++j) {
-      fprintf(histo_output, "%"PRIu64",", compare_histo[(i * histo_mod) + j]);
-    }
-    fprintf(histo_output, "%"PRIu64"\n", compare_histo[(i * histo_mod) + histo_mod - 1]);
-  }
   fprintf(histo_output, "[");
   for (i = 0; i < histo_mod - 1; ++i) {
     for (j = 0; j < histo_mod - 1; ++j) {
@@ -615,12 +610,6 @@ print_histo(FILE *histo_output)
   fprintf(histo_output, "%"PRIu64"]\n", compare_histo[((histo_mod - 1) * histo_mod) + histo_mod - 1]);
 
   fprintf(histo_output, "Log():\n");
-  for (i = 0; i < histo_mod; ++i) {
-    for (j = 0; j < histo_mod - 1; ++j) {
-      fprintf(histo_output, "%Lf,", logl(1 + compare_histo[(i * histo_mod) + j]));
-    }
-    fprintf(histo_output, "%Lf\n", logl(1 + compare_histo[(i * histo_mod) + histo_mod - 1]));
-  }
   fprintf(histo_output, "[");
   for (i = 0; i < histo_mod - 1; ++i) {
     for (j = 0; j < histo_mod - 1; ++j) {
@@ -636,12 +625,6 @@ print_histo(FILE *histo_output)
   max = 10 * compare_histo[((histo_mod - 1)/2 * (histo_mod + 1))];
   fprintf(histo_output, "Limit at %"PRIi64"\n", max);
 #define LIMIT_MAX_VAL(x) ({ uint64_t val_ = x; (val_ > max) ? (-1) : ((int64_t)val_); })
-  for (i = 0; i < histo_mod; ++i) {
-    for (j = 0; j < histo_mod - 1; ++j) {
-      fprintf(histo_output, "%"PRIi64",", LIMIT_MAX_VAL(compare_histo[(i * histo_mod) + j]));
-    }
-    fprintf(histo_output, "%"PRIi64"\n", LIMIT_MAX_VAL(compare_histo[(i * histo_mod) + histo_mod - 1]));
-  }
   fprintf(histo_output, "[");
   for (i = 0; i < histo_mod - 1; ++i) {
     for (j = 0; j < histo_mod - 1; ++j) {
@@ -668,13 +651,6 @@ print_histo(FILE *histo_output)
   fprintf(histo_output, " Independant:\n");
 
 #define INDEP(i,j)  ((uint64_t)(((long double)(independant[i] * independant[j + histo_mod])) / total))
-  for (i = 0; i < histo_mod; ++i) {
-    fprintf(histo_output, "  ");
-    for (j = 0; j < histo_mod - 1; ++j) {
-      fprintf(histo_output, "%"PRIi64",", INDEP(i,j));
-    }
-    fprintf(histo_output, "%"PRIi64"\n", INDEP(i,histo_mod - 1));
-  }
   fprintf(histo_output, "  [");
   for (i = 0; i < histo_mod - 1; ++i) {
     for (j = 0; j < histo_mod - 1; ++j) {
@@ -689,13 +665,6 @@ print_histo(FILE *histo_output)
 
   fprintf(histo_output, " Diff:\n");
 #define INDEP_DIFF(i,j)  (compare_histo[((i) * histo_mod) + j] - INDEP(i,j))
-  for (i = 0; i < histo_mod; ++i) {
-    fprintf(histo_output, "  ");
-    for (j = 0; j < histo_mod - 1; ++j) {
-      fprintf(histo_output, "%"PRIi64",", INDEP_DIFF(i,j));
-    }
-    fprintf(histo_output, "%"PRIi64"\n", INDEP_DIFF(i,histo_mod - 1));
-  }
   fprintf(histo_output, "  [");
   for (i = 0; i < histo_mod - 1; ++i) {
     for (j = 0; j < histo_mod - 1; ++j) {
