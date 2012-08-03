@@ -5,7 +5,6 @@
 #include <gsl/gsl_cdf.h>
 #include <math.h>
 #include <netinet/in.h>
-#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,6 +12,19 @@
 #include <sys/types.h>
 #include "debug.h"
 #include "zutil.h"
+
+/*
+#ifdef DEBUG
+#undef DEBUG
+#endif
+*/
+
+#ifdef DEBUG
+# include <signal.h>
+# define PRINTF(...) printf(__VA_ARGS__);
+#else
+# define PRINTF(...)
+#endif
 
 /* Stupid dynamic structure */
 #define LIST_STEP 7
@@ -40,19 +52,31 @@ increment_counter(struct array_list_u64 *list, uint64_t count)
   }
 }
 
-/* File reading struct */
-struct extract_io {
-  char* filename;
-  int   filename_count;
-  struct zutil_read input;
+/* File reading structs */
+struct input_p
+{
+  char               *filename;
+  int                 filename_count_start;
+  int                 filename_count;
+  struct zutil_read   input;
   struct in6_addr     src;
-  bool       fixed_ip;
-  bool         origin;
-  uint64_t      count;
-  uint64_t last_count;
-  double    timestamp;
-  int8_t       signal;
-  uint32_t      histo;
+  bool                fixed_ip;
+  bool                origin;
+};
+
+struct state
+{
+  struct input_p  input;
+  uint64_t        count_new;
+  uint64_t        count_old;
+  double          timestamp;
+  int8_t          signal_new;
+  int8_t          signal_old;
+};
+
+struct first_run
+{
+  uint32_t       histo;
   long double signal_m;
   long double signal_a;
   long double signal_b;
@@ -64,11 +88,16 @@ struct extract_io {
   struct array_list_u64 *bursts;
 };
 
+#ifdef DEBUG
+struct state *states_for_interrupt;
+#endif
+
 /* Global cache */
-#define MAX_SOURCES 2
-struct extract_io in[MAX_SOURCES];
+#define SOURCES 2
+
 uint64_t sync_count_diff;
 double   secure_interval;
+
 uint64_t u64_stats[2][2];
 uint64_t *compare_histo;
 struct array_list_u64 *coordbursts;
@@ -79,26 +108,15 @@ uint64_t signals[UINT8_MAX + 1][UINT8_MAX + 1];
 /* Output */
 FILE* output;
 
-#define ADD_BURST(dest,size)                 \
-  if (dest != NULL) {                        \
-    ({                                       \
-      uint64_t count_ = size - 1;            \
-      if (count_ > 0) {                      \
-        increment_counter(dest, count_ - 1); \
-      }                                      \
-    });                                      \
-  }
-
 static ssize_t
-read_input(struct extract_io *inc)
+read_input(struct state *in_state)
 {
   ssize_t len;
   char *buffer, *next;
   struct in6_addr ip;
   int tmp;
-  int8_t old_signal;
 
-  buffer = zread_line(&inc->input, &len);
+  buffer = zread_line(&in_state->input.input, &len);
   if (buffer == NULL) {
     if (len < -1) {
       goto exit;
@@ -121,12 +139,12 @@ read_input(struct extract_io *inc)
     goto exit;
   }
 
-  if (memcmp(&ip, &inc->src, sizeof(struct in6_addr)) != 0) {
-    if (inc->fixed_ip) {
+  if (memcmp(&ip, &in_state->input.src, sizeof(struct in6_addr)) != 0) {
+    if (in_state->input.fixed_ip) {
       return 0;
     }
-    if (*inc->src.s6_addr32 == 0) {
-      memcpy(&inc->src, &ip, sizeof(struct in6_addr));
+    if (*in_state->input.src.s6_addr32 == 0) {
+      memcpy(&in_state->input.src, &ip, sizeof(struct in6_addr));
     } else {
       printf("No from address was specified but two different addresses appeared\n");
       goto exit;
@@ -153,8 +171,8 @@ read_input(struct extract_io *inc)
     goto exit;
   }
   *next = '\0';
-  old_signal = inc->signal;
-  tmp = sscanf(buffer, "%"SCNd8, &inc->signal);
+  in_state->signal_old = in_state->signal_new;
+  tmp = sscanf(buffer, "%"SCNd8, &in_state->signal_new);
   if (tmp != 1) {
     printf("Bad input format (count isn't a int8: ''%.*s'')\n", len, buffer);
     goto exit;
@@ -179,9 +197,9 @@ read_input(struct extract_io *inc)
     printf("Bad input format (no closing ',' for the origin timestamp field : ''%.*s'')\n", len, buffer);
     goto exit;
   }
-  if (inc->origin) {
+  if (in_state->input.origin) {
     *next = '\0';
-    tmp = sscanf(buffer, "%lf", &inc->timestamp);
+    tmp = sscanf(buffer, "%lf", &in_state->timestamp);
     if (tmp != 1) {
       printf("Bad input format (origin timestamp isn't a double: ''%.*s'')\n", len, buffer);
       goto exit;
@@ -198,8 +216,8 @@ read_input(struct extract_io *inc)
     goto exit;
   }
   *next = '\0';
-  inc->last_count = inc->count;
-  tmp = sscanf(buffer, "%"SCNd64, &inc->count);
+  in_state->count_old = in_state->count_new;
+  tmp = sscanf(buffer, "%"SCNd64, &in_state->count_new);
   if (tmp != 1) {
     printf("Bad input format (count isn't a uint64: ''%.*s'')\n", len, buffer);
     goto exit;
@@ -209,30 +227,22 @@ read_input(struct extract_io *inc)
   buffer = next;
 
   /* Look at the reception timestamp field */
-  if (!inc->origin) {
-    tmp = sscanf(buffer, "%lf", &inc->timestamp);
+  if (!in_state->input.origin) {
+    tmp = sscanf(buffer, "%lf", &in_state->timestamp);
     if (tmp != 1) {
       printf("Bad input format (reception timestamp isn't a double: ''%.*s'')\n", len, buffer);
       goto exit;
     }
   }
 
-  ADD_BURST(inc->bursts, inc->count - inc->last_count)
-  if (inc->count - inc->last_count > 1) {
-    inc->signal_b += old_signal;
-    inc->signal_a += inc->signal;
-    ++inc->signal_ab_c;
-  }
-  inc->signal_strengh[(uint8_t)inc->signal] += 1;
-
   return 1;
 exit:
-  printf("Error parsing input file %i (last count : %"PRIu64"\n", inc - in, inc->count);
+  printf("Error parsing input file %s (last count : %"PRIu64"\n", in_state->input.filename, in_state->count_new);
   exit(-3);
 }
 
 static ssize_t
-next_input(struct extract_io *inc)
+next_input(struct state *inc)
 {
   ssize_t tmp;
   do {
@@ -242,33 +252,35 @@ next_input(struct extract_io *inc)
 }
 
 static void
-synchronize_input()
+synchronize_input(struct state* states)
 {
   ssize_t tmp;
   double   ts;
 
-  assert(MAX_SOURCES == 2);
+#if SOURCES != 2
+# error "This function was written only for 2 sources"
+#endif
 
-  tmp = next_input(&in[0]);
+  tmp = next_input(states);
   if (tmp < 0) {
     printf("End of file before any input for input file 0 (0-1) ...\n");
     exit(-4);
   }
-  tmp = next_input(&in[1]);
+  tmp = next_input(states + 1);
   if (tmp < 0) {
     printf("End of file before any input for input file 1 (0-1)...\n");
     exit(-4);
   }
   while (1) {
-    ts = in[0].timestamp - in[1].timestamp;
+    ts = states[0].timestamp - states[1].timestamp;
     if (ts > secure_interval) {
-      tmp = next_input(&in[1]);
+      tmp = next_input(states + 1);
       if (tmp < 0) {
         printf("End of file before synchronisation for input file 1 (0-1)...\n");
         exit(-4);
       }
     } else if (ts < -secure_interval) {
-      tmp = next_input(&in[0]);
+      tmp = next_input(states);
       if (tmp < 0) {
         printf("End of file before synchronisation for input file 0 (0-1)...\n");
         exit(-4);
@@ -277,86 +289,104 @@ synchronize_input()
       break;
     }
   }
-  sync_count_diff = in[0].count - in[1].count;
-  in[0].last_count = in[0].count;
-  in[1].last_count = in[1].count;
+  sync_count_diff = states[0].count_new - states[1].count_new;
+  states[0].count_old = states[0].count_new;
+  states[1].count_old = states[1].count_new;
 }
 
 static int
-next_line_or_file(int pos)
+next_line_or_file(struct state *in_state)
 {
   ssize_t tmp;
   size_t len;
   int ret;
   FILE *src;
 
-  tmp = next_input(&in[pos]);
+  tmp = next_input(in_state);
   if (tmp != -1) {
     return tmp;
   }
 
-  if (in[pos].filename_count < 0) {
+  if (in_state->input.filename_count_start < 0) {
     return -1;
   }
-  ++in[pos].filename_count;
-  if (in[pos].filename_count > 1000) {
+  ++in_state->input.filename_count;
+  if (in_state->input.filename_count > 1000) {
     return -1;
   }
 
-  len = strlen(in[pos].filename);
+  len = strlen(in_state->input.filename);
   assert(len > 7);
-  snprintf(in[pos].filename + (len - 6), 7, "%03i.gz", in[pos].filename_count);
+  snprintf(in_state->input.filename + (len - 6), 7, "%03i.gz", in_state->input.filename_count);
 
-  printf("Using next file, %s: ", in[pos].filename);
+  PRINTF("Using next file, %s: ", in_state->input.filename);
   /* Try to open the new file */
-  src = fopen(in[pos].filename, "r");
+  src = fopen(in_state->input.filename, "r");
   if (src == NULL) {
-    printf("No such file\n");
+    PRINTF("No such file\n");
     return -1;
   }
 
-  zread_end(&in[pos].input);
-  memset(&in[pos].input, 0, sizeof(struct zutil_read));
-  ret = zinit_read(&in[pos].input, src);
+  zread_end(&in_state->input.input);
+  memset(&in_state->input.input, 0, sizeof(struct zutil_read));
+  ret = zinit_read(&in_state->input.input, src);
   if (ret < 0) {
     printf("Zlib encoding error or no dat\n");
     return ret;
   }
-  printf("Success\n");
-  return next_line_or_file(pos);
+  PRINTF("Success\n");
+  return next_line_or_file(in_state);
 }
 
-static void
-update_histo(char a, char b)
-{
-  in[0].histo = ((in[0].histo << 1) + a) % histo_mod;
-  in[1].histo = ((in[1].histo << 1) + b) % histo_mod;
-  compare_histo[(in[0].histo << k) + in[1].histo] += 1;
-}
+#define ADD_VAL(a,b)                                          \
+  if (compare_histo != NULL) {                                \
+    data[0].histo = ((data[0].histo << 1) + a) % histo_mod;   \
+    data[1].histo = ((data[1].histo << 1) + b) % histo_mod;   \
+    compare_histo[(data[0].histo << k) + data[1].histo] += 1; \
+  }                                                           \
+  ++u64_stats[a][b];
 
-#define UPDATE_HISTO(a,b)      \
-  if (compare_histo != NULL) { \
-    update_histo(a,b);         \
+#define ADD_BURST(dest,size)                 \
+  if (dest != NULL) {                        \
+    ({                                       \
+      uint64_t count_ = size - 1;            \
+      if (count_ > 0) {                      \
+        increment_counter(dest, count_ - 1); \
+      }                                      \
+    });                                      \
   }
 
+#define READ_LINE(pos)                                                       \
+  tmp = next_line_or_file(states + pos);                                     \
+  if (tmp < 0) {                                                             \
+    return tmp;                                                              \
+  }                                                                          \
+  ADD_BURST(data[pos].bursts, states[pos].count_new - states[pos].count_old) \
+  if (states[pos].count_new - states[pos].count_old > 1) {                   \
+    data[pos].signal_b += states[pos].signal_old;                            \
+    data[pos].signal_a += states[pos].signal_new;                            \
+    ++data[pos].signal_ab_c;                                                 \
+  }                                                                          \
+  data[pos].signal_strengh[(uint8_t)states[pos].signal_new] += 1;
+
 static int
-next(FILE* out, bool print)
+first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
 {
   ssize_t tmp;
   int64_t age[2];
   int64_t i;
   double   ts;
 
-  age[0] = in[0].count - in[0].last_count;
-  age[1] = in[1].count - in[1].last_count;
+  age[0] = states[0].count_new - states[0].count_old;
+  age[1] = states[1].count_new - states[1].count_old;
 
   assert(age[0] >= 0);
   assert(age[1] >= 0);
-  assert((in[0].last_count - in[1].last_count) == sync_count_diff);
+  assert((states[0].count_old - states[1].count_old) == sync_count_diff);
   if (age[0] == age[1]) {
-    ts = in[0].timestamp - in[1].timestamp;
+    ts = states[0].timestamp - states[1].timestamp;
     if (abs(ts) > secure_interval) {
-      printf("Desynchronisation between %"PRIu64" et %"PRIu64"\n", in[0].count, in[1].count);
+      printf("Desynchronisation between %"PRIu64" et %"PRIu64"\n", states[0].count_new, states[1].count_new);
       exit(4);
     }
     if (age[0] != 0) {
@@ -364,74 +394,68 @@ next(FILE* out, bool print)
         if (print) {
           fprintf(out, "0 0\n");
         }
-        ++u64_stats[0][0];
-        UPDATE_HISTO(0,0)
+        ADD_VAL(0,0)
+        ++signals[INT8_MAX + 1][INT8_MAX + 1];
       }
       ADD_BURST(coordbursts, age[0])
       if (print) {
-        fprintf(out, "1 1 | %"PRIi8" - %"PRIi8"\n", in[0].signal, in[1].signal);
+        fprintf(out, "1 1 | %"PRIi8" - %"PRIi8"\n", states[0].signal_new, states[1].signal_new);
       }
-      ++u64_stats[1][1];
-      UPDATE_HISTO(1,1)
-      ++signals[(uint8_t)in[0].signal][(uint8_t)in[1].signal];
-      in[0].signal_m += in[0].signal;
-      in[1].signal_m += in[1].signal;
-      ++in[0].signal_m_c;
-      ++in[1].signal_m_c;
+      ADD_VAL(1,1)
+      ++signals[(uint8_t)states[0].signal_new][(uint8_t)states[1].signal_new];
+      data[0].signal_m += states[0].signal_new;
+      data[1].signal_m += states[1].signal_new;
+      ++data[0].signal_m_c;
+      ++data[1].signal_m_c;
     }
-    tmp = next_line_or_file(0);
-    if (tmp < 0) {
-      return tmp;
-    }
-    tmp = next_line_or_file(1);
+    READ_LINE(0)
+    READ_LINE(1)
     return tmp;
   } else if (age[0] < age[1]) {
     for(i = age[0]; i > 1; --i) {
       if (print) {
         fprintf(out, "0 0\n");
       }
-      ++u64_stats[0][0];
-      UPDATE_HISTO(0,0)
+      ADD_VAL(0,0)
+      ++signals[INT8_MAX + 1][INT8_MAX + 1];
     }
     ADD_BURST(coordbursts, age[0])
     if (print) {
-      fprintf(out, "1 0 | %"PRIi8" - %"PRIi8"\n", in[0].signal, 0);
+      fprintf(out, "1 0 | %"PRIi8" - %"PRIi8"\n", states[0].signal_new, 0);
     }
-    ++u64_stats[1][0];
-    UPDATE_HISTO(1,0)
-    ++signals[(uint8_t)in[0].signal][INT8_MAX + 1];
-    in[0].signal_e += in[0].signal;
-    ++in[0].signal_e_c;
-    ++in[1].signal_m_c;
-    in[1].last_count += age[0];
-    tmp = next_line_or_file(0);
+    ADD_VAL(1,0)
+    ++signals[(uint8_t)states[0].signal_new][INT8_MAX + 1];
+    data[0].signal_e += states[0].signal_new;
+    ++data[0].signal_e_c;
+    ++data[1].signal_m_c;
+    states[1].count_old += age[0];
+    READ_LINE(0)
     return tmp;
   } else /* age[0] > age[1] */ {
     for(i = age[1]; i > 1; --i) {
       if (print) {
         fprintf(out, "0 0\n");
       }
-      ++u64_stats[0][0];
-      UPDATE_HISTO(0,0)
+      ADD_VAL(0,0)
+      ++signals[INT8_MAX + 1][INT8_MAX + 1];
     }
     ADD_BURST(coordbursts, age[1])
     if (print) {
-      fprintf(out, "0 1 | %"PRIi8" - %"PRIi8"\n", 0, in[1].signal);
+      fprintf(out, "0 1 | %"PRIi8" - %"PRIi8"\n", 0, states[1].signal_new);
     }
-    ++u64_stats[0][1];
-    UPDATE_HISTO(0,1)
-    ++signals[INT8_MAX + 1][(uint8_t)in[0].signal];
-    in[1].signal_e += in[1].signal;
-    ++in[0].signal_m_c;
-    ++in[1].signal_e_c;
-    in[0].last_count += age[1];
-    tmp = next_line_or_file(1);
+    ADD_VAL(0,1)
+    ++signals[INT8_MAX + 1][(uint8_t)states[1].signal_new];
+    data[1].signal_e += states[1].signal_new;
+    ++data[1].signal_e_c;
+    ++data[0].signal_m_c;
+    states[0].count_old += age[1];
+    READ_LINE(1)
     return tmp;
   }
 }
 
-#undef UPDATE_HISTO
-#undef ADD_BURST
+#undef ADD_VAL
+#undef READ_LINE
 
 static long double
 lrs_part(uint64_t nij, uint64_t ni, uint64_t nj, uint64_t n)
@@ -449,7 +473,7 @@ pcs_part(uint64_t nij, uint64_t ni, uint64_t nj, uint64_t n)
 }
 
 static void
-print_stats()
+print_stats(struct first_run *data)
 {
   uint64_t partial_i[2];
   uint64_t partial_j[2];
@@ -502,7 +526,7 @@ print_stats()
   printf(" Bursts\n");
   for (i = 0; i < 2; ++i) {
     printf("  %i: [", i);
-    temp = in[i].bursts;
+    temp = data[i].bursts;
     while (temp->next != NULL) {
       for (j = 0; j < LIST_STEP; ++j) {
         printf("%"PRIu64" ", temp->data[j]);
@@ -542,22 +566,22 @@ print_stats()
 }
 
 static void
-print_signal_stats(FILE *signal_output)
+print_signal_stats(FILE *signal_output, struct first_run *data)
 {
   int i,j;
 
   for (i = 0; i < 2; ++i) {
-    in[i].signal_e /= (in[i].signal_e_c);
-    in[i].signal_m /= (in[i].signal_m_c);
-    in[i].signal_b /= (in[i].signal_ab_c);
-    in[i].signal_a /= (in[i].signal_ab_c);
+    data[i].signal_e /= (data[i].signal_e_c);
+    data[i].signal_m /= (data[i].signal_m_c);
+    data[i].signal_b /= (data[i].signal_ab_c);
+    data[i].signal_a /= (data[i].signal_ab_c);
   }
 
   fprintf(signal_output, "Signal strengh:\n");
-  fprintf(signal_output, "  Average : %Lf - %Lf  (%"PRIu64"-%"PRIu64")\n", in[0].signal_m, in[1].signal_m, in[0].signal_m_c, in[1].signal_m_c);
-  fprintf(signal_output, "  Error on the other side: %Lf - %Lf  (%"PRIu64"-%"PRIu64")\n", in[0].signal_e, in[1].signal_e, in[0].signal_e_c, in[1].signal_e_c);
-  fprintf(signal_output, "  Before error: %Lf - %Lf  (%"PRIu64"-%"PRIu64")\n", in[0].signal_b, in[1].signal_b, in[0].signal_ab_c, in[1].signal_ab_c);
-  fprintf(signal_output, "  After error: %Lf - %Lf  (%"PRIu64"-%"PRIu64")\n", in[0].signal_a, in[1].signal_a, in[0].signal_ab_c, in[1].signal_ab_c);
+  fprintf(signal_output, "  Average : %Lf - %Lf  (%"PRIu64"-%"PRIu64")\n", data[0].signal_m, data[1].signal_m, data[0].signal_m_c, data[1].signal_m_c);
+  fprintf(signal_output, "  Error on the other side: %Lf - %Lf  (%"PRIu64"-%"PRIu64")\n", data[0].signal_e, data[1].signal_e, data[0].signal_e_c, data[1].signal_e_c);
+  fprintf(signal_output, "  Before error: %Lf - %Lf  (%"PRIu64"-%"PRIu64")\n", data[0].signal_b, data[1].signal_b, data[0].signal_ab_c, data[1].signal_ab_c);
+  fprintf(signal_output, "  After error: %Lf - %Lf  (%"PRIu64"-%"PRIu64")\n", data[0].signal_a, data[1].signal_a, data[0].signal_ab_c, data[1].signal_ab_c);
   fprintf(signal_output, " Graph:\n");
   fprintf(signal_output, "[");
   for (i = INT8_MAX + 1; i < UINT8_MAX; ++i) {
@@ -567,9 +591,9 @@ print_signal_stats(FILE *signal_output)
   for (i = 0; i < 2; ++i) {
     fprintf(signal_output, "[");
     for (j = INT8_MAX + 1; j < UINT8_MAX; ++j) {
-      fprintf(signal_output, "%"PRIu64" ", in[i].signal_strengh[j]);
+      fprintf(signal_output, "%"PRIu64" ", data[i].signal_strengh[j]);
     }
-    fprintf(signal_output, "%"PRIu64"]\n", in[i].signal_strengh[UINT8_MAX]);
+    fprintf(signal_output, "%"PRIu64"]\n", data[i].signal_strengh[UINT8_MAX]);
   }
   fprintf(signal_output, " Signal Matrix:\n");
   fprintf(signal_output, "  (Axis : [");
@@ -707,7 +731,7 @@ usage(int error, char *name)
   printf(" -o, --ouput  <file>  Specify the output file for the verbose sequence(default: no output)\n");
   printf(" -s, --stats          Output to the standard output the statistics of losses\n");
   printf(" -t, --time   <dur>   Specify the expected time slot duration in millisecond\n");
-  printf(" -i, --input  <file>  Specify an output file (Need to be present %i times)\n", MAX_SOURCES);
+  printf(" -i, --input  <file>  Specify an output file (Need to be present %i times)\n", SOURCES);
   printf(" -f, --from   <addr>  Specify the source address to be analysed in the last file\n");
   printf("     --origin         Use the origin timestamp instead of the reception timestamp for the last file\n");
   printf(" -r, --rotated        The input file was rotated, use all the rotated files");
@@ -731,6 +755,7 @@ static const struct option long_options[] = {
   {NULL,                          0, 0,   0  }
 };
 
+#ifdef DEBUG
 static void
 interrupt(int sig)
 {
@@ -739,14 +764,15 @@ interrupt(int sig)
   printf("Current state:\n");
   for(i = 0; i < 2; ++i) {
     printf("Input %i:\n", i);
-    printf("  Current file: %s\n", in[i].filename);
-    printf("  Current count: %"PRIu64"\n", in[i].count);
-    printf("  Last count: %"PRIu64"\n", in[i].last_count);
-    printf("  Current timestamp : %lf\n", in[i].timestamp);
+    printf("  Current file: %s\n", states_for_interrupt[i].input.filename);
+    printf("  Current count: %"PRIu64"\n", states_for_interrupt[i].count_new);
+    printf("  Last count: %"PRIu64"\n", states_for_interrupt[i].count_old);
+    printf("  Current timestamp : %lf\n", states_for_interrupt[i].timestamp);
   }
 
   exit(sig);
 }
+#endif
 
 int
 main(int argc, char *argv[])
@@ -762,12 +788,25 @@ main(int argc, char *argv[])
   bool stats = false;
   bool print = false;
 
+  struct state *states;
+  struct first_run *first;
+
   pos = 0;
   secure_interval = 0;
-  memset(in, 0, MAX_SOURCES * sizeof(struct extract_io));
   memset(u64_stats, 0, sizeof(uint64_t[2][2]));
   k = 0;
   compare_histo = NULL;
+
+  states = calloc(SOURCES, sizeof(struct state));
+  if (states == NULL) {
+    printf("Malloc error\n");
+    exit(-1);
+  }
+  first = calloc(SOURCES, sizeof(struct first_run));
+  if (first == NULL) {
+    printf("Malloc error\n");
+    exit(-1);
+  }
 
   while((opt = getopt_long(argc, argv, "ho:st:i:f:ark:q:p::", long_options, NULL)) != -1) {
     switch(opt) {
@@ -795,8 +834,8 @@ main(int argc, char *argv[])
         }
         break;
       case 'i':
-        if (pos >= MAX_SOURCES) {
-          printf("Too much input files (max : %i)\n", MAX_SOURCES);
+        if (pos >= SOURCES) {
+          printf("Too much input files (max : %i)\n", SOURCES);
           usage(-2, argv[0]);
         }
         tmp = fopen(optarg, "r");
@@ -804,14 +843,14 @@ main(int argc, char *argv[])
           printf("Unable to load %s\n", optarg);
           return -1;
         }
-        ret = zinit_read(&in[pos].input, tmp);
+        ret = zinit_read(&states[pos].input.input, tmp);
         if (ret != 0) {
           printf("Unable to initialize zlib : %i\n", ret);
           printf("(-5 == not a .gz input file)\n");
           return -1;
         }
-        in[pos].filename = strdup(optarg);
-        in[pos].filename_count = -1;
+        states[pos].input.filename = strdup(optarg);
+        states[pos].input.filename_count_start = -1;
         ++pos;
         break;
       case 'f':
@@ -819,60 +858,61 @@ main(int argc, char *argv[])
           printf("-f option are not supposed to be before any -i option\n");
           usage(-2, argv[0]);
         }
-        if (in[pos - 1].fixed_ip) {
+        if (states[pos - 1].input.fixed_ip) {
           printf("Unable to have two different source addresses for the same flow\n");
           usage(-2, argv[0]);
         }
-        assert(pos <= MAX_SOURCES);
-        ret = inet_pton(AF_INET6, optarg, &in[pos - 1].src);
+        assert(pos <= SOURCES);
+        ret = inet_pton(AF_INET6, optarg, &states[pos - 1].input.src);
         assert(ret != -1);
         if (ret == 0) {
           printf("Invalid IPv6 address '%s'\n", optarg);
           return -2;
         }
-        in[pos - 1].fixed_ip = true;
+        states[pos - 1].input.fixed_ip = true;
         break;
       case 'a':
         if (pos < 1) {
           printf("--origin option are not supposed to be before any -i option\n");
           usage(-2, argv[0]);
         }
-        if (in[pos - 1].origin) {
+        if (states[pos - 1].input.origin) {
           printf("Why did you put two --origin on the same -i ?\n");
           usage(-2, argv[0]);
         }
-        assert(pos <= MAX_SOURCES);
-        in[pos - 1].origin = true;
+        assert(pos <= SOURCES);
+        states[pos - 1].input.origin = true;
         break;
       case 'r':
         if (pos < 1) {
           printf("--rotated option are not supposed to be before any -i option\n");
           usage(-2, argv[0]);
         }
-        if (in[pos - 1].filename_count >= 0) {
+        if (states[pos - 1].input.filename_count_start >= 0) {
           printf("Why did you put two --rotated on the same -i ?\n");
           usage(-2, argv[0]);
         }
-        assert(pos <= MAX_SOURCES);
-        tmp_c = strrchr(in[pos - 1].filename, '.');
+        assert(pos <= SOURCES);
+        tmp_c = strrchr(states[pos - 1].input.filename, '.');
         if (tmp_c == NULL) {
           printf("Error in filename name\n");
           usage(-2, argv[0]);
         }
         *tmp_c = '\0';
-        tmp_c = strrchr(in[pos - 1].filename, '.');
+        tmp_c = strrchr(states[pos - 1].input.filename, '.');
         if (tmp_c == NULL) {
           printf("Error in filename name: that's not a rotated file\n");
           usage(-2, argv[0]);
         }
         ++tmp_c;
-        ret = sscanf(tmp_c, "%i", &in[pos - 1].filename_count);
+        ret = sscanf(tmp_c, "%i", &states[pos - 1].input.filename_count_start);
         if (ret != 1) {
           printf("Error in filename name: that's not a rotated file (NaN)\n");
           usage(-2, argv[0]);
         }
-        assert(in[pos - 1].filename_count >= 0);
-        *(in[pos - 1].filename + strlen(in[pos - 1].filename)) = '.';
+        assert(states[pos - 1].input.filename_count_start >= 0);
+        *(states[pos - 1].input.filename + strlen(states[pos - 1].input.filename)) = '.';
+        states[pos - 1].input.filename_count = states[pos - 1].input.filename_count_start;
         break;
       case 'k':
         if (k != 0) {
@@ -933,8 +973,8 @@ main(int argc, char *argv[])
     return 1;
   }
 
-  if (pos < MAX_SOURCES) {
-    printf("Not enough input files (%i < %i)\n", pos, MAX_SOURCES);
+  if (pos < SOURCES) {
+    printf("Not enough input files (%i < %i)\n", pos, SOURCES);
     usage(-2, argv[0]);
   }
 
@@ -964,7 +1004,7 @@ main(int argc, char *argv[])
   if (out_filename != NULL) {
     output = fopen(out_filename, "w");
     if (output == NULL) {
-      printf("Unable to open output file\n");
+      printf("Unable to open output file '%s'\n",out_filename);
       return -1;
     }
     print = true;
@@ -973,21 +1013,24 @@ main(int argc, char *argv[])
     usage(-2, argv[0]);
   }
 
+#ifdef DEBUG
+  states_for_interrupt = states;
   signal(SIGINT, interrupt);
+#endif
 
-  synchronize_input();
-  printf("Synchronisation obtained at count: %"PRIu64", %"PRIu64"\n", in[0].count, in[1].count);
+  synchronize_input(states);
+  printf("Synchronisation obtained at count: %"PRIu64", %"PRIu64"\n", states[0].count_new, states[1].count_new);
 
   if (compare_histo != NULL) {
     for (i = 0; i < pos; ++i) {
-      in[i].histo = histo_mod - 1;
+      first[i].histo = histo_mod - 1;
     }
   }
 
   if (stats) {
     for (i = 0; i < pos; ++i) {
-      in[i].bursts = calloc(1, sizeof(struct array_list_u64));
-      if (in[i].bursts == NULL) {
+      first[i].bursts = calloc(1, sizeof(struct array_list_u64));
+      if (first[i].bursts == NULL) {
         printf("Calloc error\n");
         exit(-1);
       }
@@ -1000,16 +1043,16 @@ main(int argc, char *argv[])
   }
 
   do {
-    sret = next(output, print);
+    sret = first_pass(output, print, first, states);
   } while (sret >= 0);
 
-  if (in[0].input.input != NULL) {
-    zread_end(&in[0].input);
+  if (states[0].input.input.input != NULL) {
+    zread_end(&states[0].input.input);
   }
-  if (in[1].input.input != NULL) {
-    zread_end(&in[1].input);
+  if (states[1].input.input.input != NULL) {
+    zread_end(&states[1].input.input);
   }
-  printf("End at count: %"PRIu64", %"PRIu64"\n", in[0].count, in[1].count);
+  printf("End at count: %"PRIu64", %"PRIu64"\n", states[0].count_new, states[1].count_new);
   if (sret < -1) {
     printf("Error before EOF : %i\n", sret);
   }
@@ -1019,7 +1062,7 @@ main(int argc, char *argv[])
   }
 
   if (stats) {
-    print_stats();
+    print_stats(first);
   }
 
   if (k != 0) {
@@ -1031,11 +1074,21 @@ main(int argc, char *argv[])
   }
 
   if (signal_output != NULL) {
-    print_signal_stats(signal_output);
+    print_signal_stats(signal_output, first);
     if (signal_output != stdout) {
       fclose(signal_output);
     }
   }
+
+  if (stats) {
+    for (i = 0; i < pos; ++i) {
+      free(first[i].bursts);
+    }
+    free(coordbursts);
+  }
+  free(first);
+
+  free(states);
 
   return 0;
 }
