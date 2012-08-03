@@ -472,35 +472,44 @@ pcs_part(uint64_t nij, uint64_t ni, uint64_t nj, uint64_t n)
   return square * square / temp;
 }
 
-static void
-print_stats(struct first_run *data)
+static struct statistics*
+eval_stats(struct first_run *data)
 {
-  uint64_t partial_i[2];
-  uint64_t partial_j[2];
-  uint64_t total;
+  struct statistics *ret;
+  int i,j;
+
+  ret = calloc(1, sizeof(struct statistics));
+  if (ret == NULL) {
+    printf("Malloc Error\n");
+    exit(-1);
+  }
+
+  for (i = 0; i < 2; ++i) {
+    for (j = 0; j < 2; ++j) {
+      ret->total += u64_stats[i][j];
+      ret->partial_i[i] += u64_stats[i][j];
+      ret->partial_j[j] += u64_stats[i][j];
+    }
+  }
+
+  return ret;
+}
+
+static void
+print_stats(struct first_run *data, struct statistics* stats)
+{
   long double lrs;
   long double pcs;
   int i,j;
   struct array_list_u64 *temp;
 
-  memset(partial_i, 0, sizeof(uint64_t[2]));
-  memset(partial_j, 0, sizeof(uint64_t[2]));
-  total = 0;
   lrs = 0;
   pcs = 0;
 
   for (i = 0; i < 2; ++i) {
     for (j = 0; j < 2; ++j) {
-      total += u64_stats[i][j];
-      partial_i[i] += u64_stats[i][j];
-      partial_j[j] += u64_stats[i][j];
-    }
-  }
-
-  for (i = 0; i < 2; ++i) {
-    for (j = 0; j < 2; ++j) {
-      lrs += lrs_part(u64_stats[i][j], partial_i[i], partial_j[j], total);
-      pcs += pcs_part(u64_stats[i][j], partial_i[i], partial_j[j], total);
+      lrs += lrs_part(u64_stats[i][j], stats->partial_i[i], stats->partial_j[j], stats->total);
+      pcs += pcs_part(u64_stats[i][j], stats->partial_i[i], stats->partial_j[j], stats->total);
     }
   }
 
@@ -512,12 +521,12 @@ print_stats(struct first_run *data)
     }
   }
   printf(" Ni,.:\n");
-  printf("  N0,. = %"PRIu64"\n", partial_i[0]);
-  printf("  N1,. = %"PRIu64"\n", partial_i[1]);
+  printf("  N0,. = %"PRIu64"\n", stats->partial_i[0]);
+  printf("  N1,. = %"PRIu64"\n", stats->partial_i[1]);
   printf(" N.,j:\n");
-  printf("  N.,0 = %"PRIu64"\n", partial_j[0]);
-  printf("  N.,1 = %"PRIu64"\n", partial_j[1]);
-  printf(" Total : %"PRIu64"\n", total);
+  printf("  N.,0 = %"PRIu64"\n", stats->partial_j[0]);
+  printf("  N.,1 = %"PRIu64"\n", stats->partial_j[1]);
+  printf(" Total : %"PRIu64"\n", stats->total);
   /* Q = p (X > x) */
   printf(" LRS: p = %f\n", gsl_cdf_chisq_Q((double)(2 * lrs), 1));
   printf(" PCS: p = %f\n", gsl_cdf_chisq_Q((double)pcs, 1));
@@ -551,14 +560,14 @@ print_stats(struct first_run *data)
   }
   printf("%"PRIu64"]\n", temp->data[LIST_STEP - 1]);
 
-  printf("Estimation (N0,0) : %lf (VS %"PRIu64")\n", ((double)partial_i[0]) / total * ((double)partial_j[0]), u64_stats[0][0]);
+  printf("Estimation (N0,0) : %lf (VS %"PRIu64")\n", ((double)stats->partial_i[0]) / stats->total * ((double)stats->partial_j[0]), u64_stats[0][0]);
 
   printf("Simple model (0,. and .,0 independant, common error q):\n");
 
   long double x,y,z;
-  x = u64_stats[0][0] / ((long double) total);
-  y = u64_stats[0][1] / ((long double) total);
-  z = u64_stats[1][0] / ((long double) total);
+  x = u64_stats[0][0] / ((long double) stats->total);
+  y = u64_stats[0][1] / ((long double) stats->total);
+  z = u64_stats[1][0] / ((long double) stats->total);
 
   printf(" 0,. = %Lf\n", y / (1 - x - z));
   printf(" .,0 = %Lf\n", z / (1 - x - y));
@@ -790,6 +799,7 @@ main(int argc, char *argv[])
 
   struct state *states;
   struct first_run *first;
+  struct statistics* statistics;
 
   pos = 0;
   secure_interval = 0;
@@ -1062,7 +1072,8 @@ main(int argc, char *argv[])
   }
 
   if (stats) {
-    print_stats(first);
+    statistics = eval_stats(first);
+    print_stats(first, statistics);
   }
 
   if (k != 0) {
