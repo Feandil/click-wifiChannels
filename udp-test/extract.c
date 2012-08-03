@@ -93,8 +93,7 @@ struct statistics {
 
 struct second_run
 {
-  long double     mean;
-  long double variance;
+  void *null;
 };
 
 #ifdef DEBUG
@@ -113,7 +112,6 @@ struct array_list_u64 *coordbursts;
 uint32_t histo_mod;
 int k;
 uint64_t signals[UINT8_MAX + 1][UINT8_MAX + 1];
-long double covariance;
 
 /* Output */
 FILE* output;
@@ -467,12 +465,6 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
 #undef ADD_VAL
 #undef READ_LINE
 
-#define VARIANCES(a,b)                \
-  tempa = (a - data[0].mean);         \
-  data[0].variance += tempa * tempa;  \
-  tempb = (b - data[1].mean);         \
-  data[1].variance += tempb * tempb;  \
-  covariance += tempa * tempb;
 
 static int
 second_pass(FILE* out, bool print, struct second_run *data, struct state *states)
@@ -481,7 +473,6 @@ second_pass(FILE* out, bool print, struct second_run *data, struct state *states
   int64_t age[2];
   int64_t i;
   double   ts;
-  long double tempa, tempb;
 
   age[0] = states[0].count_new - states[0].count_old;
   age[1] = states[1].count_new - states[1].count_old;
@@ -497,9 +488,9 @@ second_pass(FILE* out, bool print, struct second_run *data, struct state *states
     }
     if (age[0] != 0) {
       for (i = age[0]; i > 1; --i) {
-        VARIANCES(0,0)
+
       }
-      VARIANCES(1,1)
+
     }
     tmp = next_line_or_file(states);
     if (tmp < 0) {
@@ -509,24 +500,22 @@ second_pass(FILE* out, bool print, struct second_run *data, struct state *states
     return tmp;
   } else if (age[0] < age[1]) {
     for(i = age[0]; i > 1; --i) {
-      VARIANCES(0,0)
+
     }
-    VARIANCES(1,0)
+
     states[1].count_old += age[0];
     tmp = next_line_or_file(states);
     return tmp;
   } else /* age[0] > age[1] */ {
     for(i = age[1]; i > 1; --i) {
-      VARIANCES(0,0)
+
     }
-    VARIANCES(0,1)
+
     states[0].count_old += age[1];
     tmp = next_line_or_file(states + 1);
     return tmp;
   }
 }
-
-#undef VARIANCES
 
 static long double
 lrs_part(uint64_t nij, uint64_t ni, uint64_t nj, uint64_t n)
@@ -643,6 +632,19 @@ print_stats(struct first_run *data, struct statistics* stats)
   printf(" 0,. = %Lf\n", y / (1 - x - z));
   printf(" .,0 = %Lf\n", z / (1 - x - y));
   printf(" q = %Lf\n", (x * y + z * y + z * x + x * x - x) / (x + y + z - 1));
+
+  printf("(Co)variance and Pearson correlation\n");
+
+  long double mean[2], stand_dev[2], covar;
+  mean[0] = ((long double)stats->partial_i[1]) / ((long double)stats->total);
+  mean[1] = ((long double)stats->partial_j[1]) / ((long double)stats->total);
+  stand_dev[0] = sqrt((mean[0] * mean[0] * stats->partial_i[0] + (1 - mean[0]) * (1 - mean[0]) * stats->partial_i[1]) / stats->total);
+  stand_dev[1] = sqrt((mean[1] * mean[1] * stats->partial_j[0] + (1 - mean[1]) * (1 - mean[1]) * stats->partial_j[1]) / stats->total);
+  covar = (0 - mean[0]) * (0 - mean[1]) * u64_stats[0][0] + (1 - mean[0]) * (0 - mean[1]) * u64_stats[1][0] + (0 - mean[0]) * (1 - mean[1]) * u64_stats[0][1] + (1 - mean[0]) * (1 - mean[1]) * u64_stats[1][1];
+  printf(" I : %Lf\n", stand_dev[0]);
+  printf(" J : %Lf\n", stand_dev[1]);
+  printf(" Cov : %Lf\n", covar / stats->total);
+  printf("Pearson correlation : %Lf\n", covar / stats->total / (stand_dev[0] * stand_dev[1]));
 }
 
 static void
@@ -802,22 +804,6 @@ print_histo(FILE *histo_output)
 }
 
 static void
-print_covar(struct second_run *data, struct statistics* stats)
-{
-  int i;
-  long double variances[2];
-
-  for (i = 0; i < 2; ++i) {
-    variances[i] = sqrt(data[i].variance / stats->total);
-  }
-  printf("Variances:\n");
-  printf(" I : %Lf\n", variances[0]);
-  printf(" J : %Lf\n", variances[1]);
-  printf(" Cov : %Lf\n", covariance / stats->total);
-  printf("Pearson correlation : %Lf\n", covariance / stats->total / (variances[0] * variances[1]));
-}
-
-static void
 usage(int error, char *name)
 {
   printf("%s: Try to transform two inputs into 0s and 1s\n", name);
@@ -834,7 +820,6 @@ usage(int error, char *name)
   printf(" -k           <pow>   Size of the stored log (used for compairing sequences), expressed in 2 << <pow>\n");
   printf(" -q, --histfile <f>   Name of the file used for the output of the comparaison of sequences\n");
   printf(" -p, --signal=[file]  Turn on the output of signal related statistics. If [file] is specified, use [file] for the output. Use the standard output by default\n");
-  printf(" -c, --covariance     Calculate the covariance (need a 2nd run)\n");
   exit(error);
 }
 
@@ -849,7 +834,6 @@ static const struct option long_options[] = {
   {"rotated",           no_argument, 0,  'r' },
   {"histfile",    required_argument, 0,  'q' },
   {"signal",      optional_argument, 0,  'p' },
-  {"covariance",        no_argument, 0,  'c' },
   {NULL,                          0, 0,   0  }
 };
 
@@ -885,7 +869,6 @@ main(int argc, char *argv[])
   ssize_t sret;
   bool stats = false;
   bool print = false;
-  bool covar = false;
 
   struct state *states;
   struct first_run *first;
@@ -911,7 +894,7 @@ PRINTF("Debug enabled\n")
     exit(-1);
   }
 
-  while((opt = getopt_long(argc, argv, "ho:st:i:f:ark:q:p::c", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "ho:st:i:f:ark:q:p::", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0, argv[0]);
@@ -1064,14 +1047,6 @@ PRINTF("Debug enabled\n")
           signal_output = stdout;
         }
         break;
-      case 'c':
-        if (covar) {
-          printf("-c option is not supposed to appear more than once\n");
-          usage(-2, argv[0]);
-        }
-        covar = true;
-        covariance = 0;
-        break;
       default:
         usage(-1, argv[0]);
         break;
@@ -1124,13 +1099,15 @@ PRINTF("Debug enabled\n")
     usage(-2, argv[0]);
   }
 
-  if (covar) {
+/*
+  if () {
     second = calloc(SOURCES, sizeof(struct second_run));
     if (second == NULL) {
       printf("Malloc error\n");
       exit(-1);
     }
   }
+*/
 
 #ifdef DEBUG
   states_for_interrupt = states;
@@ -1232,8 +1209,7 @@ PRINTF("Debug enabled\n")
         return -1;
       }
     }
-    second[0].mean = ((long double)statistics->partial_i[1]) / ((long double)statistics->total);
-    second[1].mean = ((long double)statistics->partial_j[1]) / ((long double)statistics->total);
+
     synchronize_input(states);
     do {
       sret = second_pass(output, print, second, states);
@@ -1249,9 +1225,6 @@ PRINTF("Debug enabled\n")
       printf("Error before EOF (Second loop): %i\n", sret);
     }
 
-    if (covar) {
-      print_covar(second, statistics);
-    }
 
     free(second);
   }
