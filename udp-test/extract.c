@@ -113,6 +113,15 @@ uint32_t histo_mod;
 int k;
 uint64_t signals[UINT8_MAX + 1][UINT8_MAX + 1];
 
+struct historical_correlation {
+  uint64_t data[4][3];
+};
+size_t long_history_size;
+uint8_t *long_history,
+        *long_history_current;
+struct historical_correlation *histo_corr;
+bool long_history_looped;
+
 /* Output */
 FILE* output;
 
@@ -346,6 +355,46 @@ next_line_or_file(struct state *in_state)
   return next_line_or_file(in_state);
 }
 
+static void inline
+temporal_dependence(uint8_t new_state)
+{
+  uint8_t *current, *end;
+  struct historical_correlation *histo_current;
+
+  if (long_history_looped && (new_state != 0b11)) {
+    histo_current = histo_corr;
+
+    end = long_history + long_history_size;
+    current = long_history_current + 1;
+
+    assert(long_history <= current);
+    assert(current <= end);
+
+    while (current < end) {
+      ++histo_current->data[*current][new_state];
+      ++histo_current;
+      ++current;
+    }
+
+    current = long_history;
+    end = long_history_current + 1;
+
+    while (current < end) {
+      ++histo_current->data[*current][new_state];
+      ++histo_current;
+      ++current;
+    }
+  }
+
+  *long_history_current = new_state;
+
+  --long_history_current;
+  if (long_history_current < long_history) {
+    long_history_looped = true;
+    long_history_current = long_history + long_history_size - 1;
+  }
+}
+
 #define ADD_VAL(a,b)                                          \
   if (compare_histo != NULL) {                                \
     data[0].histo = ((data[0].histo << 1) + a) % histo_mod;   \
@@ -353,6 +402,12 @@ next_line_or_file(struct state *in_state)
     compare_histo[(data[0].histo << k) + data[1].histo] += 1; \
   }                                                           \
   ++u64_stats[a][b];
+
+#define ADD_VAR_ONE(a)         \
+  if (long_history != NULL) {  \
+    temporal_dependence(a);    \
+  }
+
 
 #define ADD_BURST(dest,size)                 \
   if (dest != NULL) {                        \
@@ -403,6 +458,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
           fprintf(out, "0 0\n");
         }
         ADD_VAL(0,0)
+        ADD_VAR_ONE(0b00)
         ++signals[INT8_MAX + 1][INT8_MAX + 1];
       }
       ADD_BURST(coordbursts, age[0])
@@ -410,6 +466,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
         fprintf(out, "1 1 | %"PRIi8" - %"PRIi8"\n", states[0].signal_new, states[1].signal_new);
       }
       ADD_VAL(1,1)
+      ADD_VAR_ONE(0b11)
       ++signals[(uint8_t)states[0].signal_new][(uint8_t)states[1].signal_new];
       data[0].signal_m += states[0].signal_new;
       data[1].signal_m += states[1].signal_new;
@@ -425,6 +482,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
         fprintf(out, "0 0\n");
       }
       ADD_VAL(0,0)
+      ADD_VAR_ONE(0b00)
       ++signals[INT8_MAX + 1][INT8_MAX + 1];
     }
     ADD_BURST(coordbursts, age[0])
@@ -432,6 +490,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
       fprintf(out, "1 0 | %"PRIi8" - %"PRIi8"\n", states[0].signal_new, 0);
     }
     ADD_VAL(1,0)
+    ADD_VAR_ONE(0b10)
     ++signals[(uint8_t)states[0].signal_new][INT8_MAX + 1];
     data[0].signal_e += states[0].signal_new;
     ++data[0].signal_e_c;
@@ -445,6 +504,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
         fprintf(out, "0 0\n");
       }
       ADD_VAL(0,0)
+      ADD_VAR_ONE(0b00)
       ++signals[INT8_MAX + 1][INT8_MAX + 1];
     }
     ADD_BURST(coordbursts, age[1])
@@ -452,6 +512,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
       fprintf(out, "0 1 | %"PRIi8" - %"PRIi8"\n", 0, states[1].signal_new);
     }
     ADD_VAL(0,1)
+    ADD_VAR_ONE(0b01)
     ++signals[INT8_MAX + 1][(uint8_t)states[1].signal_new];
     data[1].signal_e += states[1].signal_new;
     ++data[1].signal_e_c;
@@ -462,9 +523,9 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
   }
 }
 
+#undef ADD_VAR_ONE
 #undef ADD_VAL
 #undef READ_LINE
-
 
 static int
 second_pass(FILE* out, bool print, struct second_run *data, struct state *states)
@@ -804,6 +865,61 @@ print_histo(FILE *histo_output)
 }
 
 static void
+print_histo_correlation(FILE *histo_corr_file, struct statistics* stats)
+{
+  size_t i;
+
+#define PRINT_SEP                 \
+  fprintf(histo_corr_file, ", ");
+
+#define PRINT_AXIS                                        \
+  fprintf(histo_corr_file, "[");                          \
+  for (i = 1; i < long_history_size; ++i)                 \
+    fprintf(histo_corr_file, "%zu ", i);                  \
+  fprintf(histo_corr_file, "%zu]", long_history_size);
+
+#define PRINT_PLOT_START             \
+  fprintf(histo_corr_file, "plot(");
+
+#define PRINT_CURVE(a,b,c)                                                                              \
+  PRINT_AXIS                                                                                            \
+  fprintf(histo_corr_file, ", [");                                                                      \
+  for (i = 0; i < long_history_size - 1; ++i)                                                           \
+    fprintf(histo_corr_file, "%Lf ", histo_corr[i].data[a][b] / ((long double) c));                     \
+  fprintf(histo_corr_file, "%Lf]", histo_corr[long_history_size - 1].data[a][b] / ((long double) c));
+
+#define PRINT_PLOT_END              \
+  fprintf(histo_corr_file, ");\n");
+
+  PRINT_PLOT_START
+  PRINT_CURVE(0b00,0b00, u64_stats[0][0])
+  PRINT_SEP
+  PRINT_CURVE(0b00,0b01, u64_stats[0][0])
+  PRINT_SEP
+  PRINT_CURVE(0b00,0b10, u64_stats[0][0])
+  PRINT_PLOT_END
+  PRINT_PLOT_START
+  PRINT_CURVE(0b01,0b00, u64_stats[0][1])
+  PRINT_SEP
+  PRINT_CURVE(0b01,0b01, u64_stats[0][1])
+  PRINT_SEP
+  PRINT_CURVE(0b01,0b10, u64_stats[0][1])
+  PRINT_PLOT_END
+  PRINT_PLOT_START
+  PRINT_CURVE(0b10,0b00, u64_stats[1][0])
+  PRINT_SEP
+  PRINT_CURVE(0b10,0b01, u64_stats[1][0])
+  PRINT_SEP
+  PRINT_CURVE(0b10,0b10, u64_stats[1][0])
+  PRINT_PLOT_END
+
+#undef PRINT_PLOT_END
+#undef PRINT_CURVE
+#undef PRINT_PLOT_START
+#undef PRINT_SEP
+}
+
+static void
 usage(int error, char *name)
 {
   printf("%s: Try to transform two inputs into 0s and 1s\n", name);
@@ -820,6 +936,8 @@ usage(int error, char *name)
   printf(" -k           <pow>   Size of the stored log (used for compairing sequences), expressed in 2 << <pow>\n");
   printf(" -q, --histfile <f>   Name of the file used for the output of the comparaison of sequences\n");
   printf(" -p, --signal=[file]  Turn on the output of signal related statistics. If [file] is specified, use [file] for the output. Use the standard output by default\n");
+  printf(" --temp_corr_s <size> Size of the history for the graphs for temporal correlation (default: disabled)\n");
+  printf(" --temp_corr_f <file> File for the output of the plot function for temporal correlation (default: stdout)\n");
   exit(error);
 }
 
@@ -834,6 +952,8 @@ static const struct option long_options[] = {
   {"rotated",           no_argument, 0,  'r' },
   {"histfile",    required_argument, 0,  'q' },
   {"signal",      optional_argument, 0,  'p' },
+  {"temp_corr_s", required_argument, 0,  '1' },
+  {"temp_corr_f", required_argument, 0,  '2' },
   {NULL,                          0, 0,   0  }
 };
 
@@ -864,6 +984,7 @@ main(int argc, char *argv[])
   char *out_filename = NULL;
   char *histo_filename = NULL;
   FILE *histo_file = NULL;
+  FILE *histo_corr_file = NULL;
   FILE *signal_output = NULL;
   char *tmp_c;
   ssize_t sret;
@@ -880,6 +1001,7 @@ main(int argc, char *argv[])
   memset(u64_stats, 0, sizeof(uint64_t[2][2]));
   k = 0;
   compare_histo = NULL;
+  histo_corr = NULL;
 
 PRINTF("Debug enabled\n")
 
@@ -1047,6 +1169,39 @@ PRINTF("Debug enabled\n")
           signal_output = stdout;
         }
         break;
+      case '1':
+        if (histo_corr != NULL) {
+          printf("--temp_corr_s option is not supposed to appear more than once\n");
+          usage(-2, argv[0]);
+        }
+        ret = sscanf(optarg, "%zu", &long_history_size);
+        if (ret != 1) {
+          printf("Error in --temp_corr_s option: Not a number !\n");
+          usage(-2, argv[0]);
+        }
+        long_history = calloc(long_history_size, sizeof(uint8_t));
+        if (long_history == NULL) {
+          printf("Malloc error\n");
+          exit(-1);
+        }
+        long_history_current = long_history + long_history_size - 1;
+        histo_corr = calloc(long_history_size, sizeof(struct historical_correlation));
+        if (histo_corr == NULL) {
+          printf("Malloc error\n");
+          exit(-1);
+        }
+        long_history_looped = false;
+        break;
+      case '2':
+        if (histo_corr_file != NULL) {
+          printf("--temp_corr_f option is not supposed to appear more than once\n");
+          usage(-2, argv[0]);
+        }
+        histo_corr_file = fopen(optarg, "w");
+        if (histo_corr_file  == NULL) {
+          printf("Unable to open signal output file\n");
+          return -1;
+        }
       default:
         usage(-1, argv[0]);
         break;
@@ -1097,6 +1252,18 @@ PRINTF("Debug enabled\n")
   } else if (!stats) {
     printf("No statistics required, no output file given: nothing to do, abording\n");
     usage(-2, argv[0]);
+  }
+
+  if (histo_corr_file == NULL) {
+    if (histo_corr != NULL) {
+      printf("Warning, --temp_corr_s option used without specifying file output (--temp_corr_f), falling back to standard output\n");
+      histo_corr_file = stdout;
+    }
+  } else {
+    if (histo_corr == NULL) {
+      printf("Error, --temp_corr_f cannot be used without --temp_corr_s\n");
+      usage(-2, argv[0]);
+    }
   }
 
 /*
@@ -1177,6 +1344,13 @@ PRINTF("Debug enabled\n")
     print_signal_stats(signal_output, first);
     if (signal_output != stdout) {
       fclose(signal_output);
+    }
+  }
+
+  if (histo_corr_file !=NULL) {
+    print_histo_correlation(histo_corr_file, statistics);
+    if (histo_corr_file != stdout) {
+      fclose(histo_corr_file);
     }
   }
 
