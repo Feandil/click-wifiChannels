@@ -21,9 +21,6 @@
 
 #ifdef DEBUG
 # include <signal.h>
-# define PRINTF(...) printf(__VA_ARGS__);
-#else
-# define PRINTF(...)
 #endif
 
 /* Stupid dynamic structure */
@@ -806,6 +803,8 @@ main(int argc, char *argv[])
   memset(u64_stats, 0, sizeof(uint64_t[2][2]));
   k = 0;
   compare_histo = NULL;
+
+PRINTF("Debug enabled\n")
 
   states = calloc(SOURCES, sizeof(struct state));
   if (states == NULL) {
