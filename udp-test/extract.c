@@ -914,7 +914,7 @@ PRINTF("Debug enabled\n")
           usage(-2, argv[0]);
         }
         ++tmp_c;
-        ret = sscanf(tmp_c, "%i", &states[pos - 1].input.filename_count_start);
+        ret = sscanf(tmp_c, "%d", &states[pos - 1].input.filename_count_start);
         if (ret != 1) {
           printf("Error in filename name: that's not a rotated file (NaN)\n");
           usage(-2, argv[0]);
