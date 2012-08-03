@@ -734,8 +734,8 @@ usage(int error, char *name)
   printf(" -i, --input  <file>  Specify an output file (Need to be present %i times)\n", SOURCES);
   printf(" -f, --from   <addr>  Specify the source address to be analysed in the last file\n");
   printf("     --origin         Use the origin timestamp instead of the reception timestamp for the last file\n");
-  printf(" -r, --rotated        The input file was rotated, use all the rotated files");
-  printf(" -k           <pow>   Size of the stored log (used for compairing sequences), expressed in 2 << <pow>");
+  printf(" -r, --rotated        The input file was rotated, use all the rotated files\n");
+  printf(" -k           <pow>   Size of the stored log (used for compairing sequences), expressed in 2 << <pow>\n");
   printf(" -q, --histfile <f>   Name of the file used for the output of the comparaison of sequences\n");
   printf(" -p, --signal=[file]  Turn on the output of signal related statistics. If [file] is specified, use [file] for the output. Use the standard output by default\n");
   exit(error);
