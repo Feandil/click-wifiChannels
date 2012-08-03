@@ -85,6 +85,18 @@ struct first_run
   struct array_list_u64 *bursts;
 };
 
+struct statistics {
+  uint64_t partial_i[2];
+  uint64_t partial_j[2];
+  uint64_t total;
+};
+
+struct second_run
+{
+  long double     mean;
+  long double variance;
+};
+
 #ifdef DEBUG
 struct state *states_for_interrupt;
 #endif
@@ -101,6 +113,7 @@ struct array_list_u64 *coordbursts;
 uint32_t histo_mod;
 int k;
 uint64_t signals[UINT8_MAX + 1][UINT8_MAX + 1];
+long double covariance;
 
 /* Output */
 FILE* output;
@@ -454,6 +467,67 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
 #undef ADD_VAL
 #undef READ_LINE
 
+#define VARIANCES(a,b)                \
+  tempa = (a - data[0].mean);         \
+  data[0].variance += tempa * tempa;  \
+  tempb = (b - data[1].mean);         \
+  data[1].variance += tempb * tempb;  \
+  covariance += tempa * tempb;
+
+static int
+second_pass(FILE* out, bool print, struct second_run *data, struct state *states)
+{
+  ssize_t tmp;
+  int64_t age[2];
+  int64_t i;
+  double   ts;
+  long double tempa, tempb;
+
+  age[0] = states[0].count_new - states[0].count_old;
+  age[1] = states[1].count_new - states[1].count_old;
+
+  assert(age[0] >= 0);
+  assert(age[1] >= 0);
+  assert((states[0].count_old - states[1].count_old) == sync_count_diff);
+  if (age[0] == age[1]) {
+    ts = states[0].timestamp - states[1].timestamp;
+    if (abs(ts) > secure_interval) {
+      printf("Desynchronisation between %"PRIu64" et %"PRIu64"\n", states[0].count_new, states[1].count_new);
+      exit(4);
+    }
+    if (age[0] != 0) {
+      for (i = age[0]; i > 1; --i) {
+        VARIANCES(0,0)
+      }
+      VARIANCES(1,1)
+    }
+    tmp = next_line_or_file(states);
+    if (tmp < 0) {
+      return tmp;
+    }
+    tmp = next_line_or_file(states + 1);
+    return tmp;
+  } else if (age[0] < age[1]) {
+    for(i = age[0]; i > 1; --i) {
+      VARIANCES(0,0)
+    }
+    VARIANCES(1,0)
+    states[1].count_old += age[0];
+    tmp = next_line_or_file(states);
+    return tmp;
+  } else /* age[0] > age[1] */ {
+    for(i = age[1]; i > 1; --i) {
+      VARIANCES(0,0)
+    }
+    VARIANCES(0,1)
+    states[0].count_old += age[1];
+    tmp = next_line_or_file(states + 1);
+    return tmp;
+  }
+}
+
+#undef VARIANCES
+
 static long double
 lrs_part(uint64_t nij, uint64_t ni, uint64_t nj, uint64_t n)
 {
@@ -728,6 +802,22 @@ print_histo(FILE *histo_output)
 }
 
 static void
+print_covar(struct second_run *data, struct statistics* stats)
+{
+  int i;
+  long double variances[2];
+
+  for (i = 0; i < 2; ++i) {
+    variances[i] = sqrt(data[i].variance / stats->total);
+  }
+  printf("Variances:\n");
+  printf(" I : %Lf\n", variances[0]);
+  printf(" J : %Lf\n", variances[1]);
+  printf(" Cov : %Lf\n", covariance / stats->total);
+  printf("Pearson correlation : %Lf\n", covariance / stats->total / (variances[0] * variances[1]));
+}
+
+static void
 usage(int error, char *name)
 {
   printf("%s: Try to transform two inputs into 0s and 1s\n", name);
@@ -744,6 +834,7 @@ usage(int error, char *name)
   printf(" -k           <pow>   Size of the stored log (used for compairing sequences), expressed in 2 << <pow>\n");
   printf(" -q, --histfile <f>   Name of the file used for the output of the comparaison of sequences\n");
   printf(" -p, --signal=[file]  Turn on the output of signal related statistics. If [file] is specified, use [file] for the output. Use the standard output by default\n");
+  printf(" -c, --covariance     Calculate the covariance (need a 2nd run)\n");
   exit(error);
 }
 
@@ -758,6 +849,7 @@ static const struct option long_options[] = {
   {"rotated",           no_argument, 0,  'r' },
   {"histfile",    required_argument, 0,  'q' },
   {"signal",      optional_argument, 0,  'p' },
+  {"covariance",        no_argument, 0,  'c' },
   {NULL,                          0, 0,   0  }
 };
 
@@ -793,10 +885,12 @@ main(int argc, char *argv[])
   ssize_t sret;
   bool stats = false;
   bool print = false;
+  bool covar = false;
 
   struct state *states;
   struct first_run *first;
-  struct statistics* statistics;
+  struct statistics* statistics = NULL;
+  struct second_run *second = NULL;
 
   pos = 0;
   secure_interval = 0;
@@ -817,7 +911,7 @@ PRINTF("Debug enabled\n")
     exit(-1);
   }
 
-  while((opt = getopt_long(argc, argv, "ho:st:i:f:ark:q:p::", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "ho:st:i:f:ark:q:p::c", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0, argv[0]);
@@ -970,6 +1064,14 @@ PRINTF("Debug enabled\n")
           signal_output = stdout;
         }
         break;
+      case 'c':
+        if (covar) {
+          printf("-c option is not supposed to appear more than once\n");
+          usage(-2, argv[0]);
+        }
+        covar = true;
+        covariance = 0;
+        break;
       default:
         usage(-1, argv[0]);
         break;
@@ -1022,6 +1124,14 @@ PRINTF("Debug enabled\n")
     usage(-2, argv[0]);
   }
 
+  if (covar) {
+    second = calloc(SOURCES, sizeof(struct second_run));
+    if (second == NULL) {
+      printf("Malloc error\n");
+      exit(-1);
+    }
+  }
+
 #ifdef DEBUG
   states_for_interrupt = states;
   signal(SIGINT, interrupt);
@@ -1070,8 +1180,11 @@ PRINTF("Debug enabled\n")
     fclose(output);
   }
 
-  if (stats) {
+  if (stats || second != NULL) {
     statistics = eval_stats(first);
+  }
+
+  if (stats) {
     print_stats(first, statistics);
   }
 
@@ -1097,6 +1210,51 @@ PRINTF("Debug enabled\n")
     free(coordbursts);
   }
   free(first);
+
+  if (second != NULL) {
+    memset(((uint8_t*)states) + sizeof(struct input_p), 0, sizeof(struct state) - sizeof(struct input_p));
+    memset(((uint8_t*)(states + 1)) + sizeof(struct input_p), 0, sizeof(struct state) - sizeof(struct input_p));
+    for (i = 0; i < pos; ++i) {
+      if (states[i].input.filename_count_start >= 0) {
+        states[i].input.filename_count = states[i].input.filename_count_start;
+        sret = strlen(states[i].input.filename);
+        assert(sret > 7);
+        snprintf(states[i].input.filename + (sret - 6), 7, "%03i.gz", states[i].input.filename_count);
+      }
+      tmp = fopen(states[i].input.filename, "r");
+      if (tmp == NULL || ferror(tmp)) {
+        printf("Unable to reload %s for the second loop\n", states[i].input.filename);
+        return -1;
+      }
+      ret = zinit_read(&states[i].input.input, tmp);
+      if (ret != 0) {
+        printf("Unable to re-initialize zlib : %i\n", ret);
+        return -1;
+      }
+    }
+    second[0].mean = ((long double)statistics->partial_i[1]) / ((long double)statistics->total);
+    second[1].mean = ((long double)statistics->partial_j[1]) / ((long double)statistics->total);
+    synchronize_input(states);
+    do {
+      sret = second_pass(output, print, second, states);
+    } while (sret >= 0);
+
+    if (states[0].input.input.input != NULL) {
+      zread_end(&states[0].input.input);
+    }
+    if (states[1].input.input.input != NULL) {
+      zread_end(&states[1].input.input);
+    }
+    if (sret < -1) {
+      printf("Error before EOF (Second loop): %i\n", sret);
+    }
+
+    if (covar) {
+      print_covar(second, statistics);
+    }
+
+    free(second);
+  }
 
   free(states);
 
