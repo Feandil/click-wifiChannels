@@ -1208,6 +1208,7 @@ PRINTF("Debug enabled\n")
           printf("Unable to open signal output file\n");
           return -1;
         }
+        break;
       default:
         usage(-1, argv[0]);
         break;
