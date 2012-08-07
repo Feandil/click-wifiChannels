@@ -151,7 +151,7 @@ static const struct option long_options[] = {
   {"dest",        required_argument, 0,  'd' },
   {"port",        required_argument, 0,  'p' },
   {"sec",         required_argument, 0,  's' },
-  {"usec",        required_argument, 0,  'u' },
+  {"msec",        required_argument, 0,  'm' },
   {"count",       required_argument, 0,  'c' },
   {"size",        required_argument, 0,  'l' },
   {"bind",        required_argument, 0,  'i' },
@@ -171,7 +171,7 @@ int main(int argc, char *argv[]) {
   int size = DEFAULT_SIZE;
   uint32_t scope = 0;
 
-  while((opt = getopt_long(argc, argv, "hd:p:s:u:c:l:i:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "hd:p:s:m:c:l:i:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0, argv[0]);
@@ -191,7 +191,7 @@ int main(int argc, char *argv[]) {
         }
         sscanf(optarg, "%ld", &delay.tv_sec);
         break;
-      case 'u':
+      case 'm':
         if (delay.tv_usec != DEFAULT_TIME_MILLISECOND) {
           usage(1, argv[0]);
         }
