@@ -189,7 +189,7 @@ open_monitor_interface(const char *interface, const uint32_t phy_inter) {
     ret = sockfd;
     goto delete_open_interface;
   }
-  strncpy(ifreq.ifr_name, interface, IFNAMSIZ);
+  strncpy(ifreq.ifr_name, interface, IF_NAMESIZE);
   /* Read interface flags */
   ret = ioctl(sockfd, SIOCGIFFLAGS, &ifreq);
   if (ret < 0) {
@@ -231,7 +231,7 @@ close_interface(const char *interface)
     perror("socket");
     goto delete_open_interface;
   }
-  strncpy(ifreq.ifr_name, interface, IFNAMSIZ);
+  strncpy(ifreq.ifr_name, interface, IF_NAMESIZE);
   /* Read interface flags */
   if (ioctl(sockfd, SIOCGIFFLAGS, &ifreq) < 0) {
     fprintf(stderr, "Unable to get current flags: ");
@@ -494,7 +494,7 @@ monitor_listen_on(struct mon_io_t* mon, in_port_t port, const char* mon_interfac
     return NULL;
   }
 
-  snprintf(ifreq.ifr_name, IFNAMSIZ, "%s", wan_interface);
+  snprintf(ifreq.ifr_name, IF_NAMESIZE, "%s", wan_interface);
   if (ioctl(tmp_fd, SIOCGIFHWADDR, (char *)&ifreq) < 0) {
     PERROR("ioctl(sockfd");
     return NULL;

@@ -67,7 +67,7 @@ struct line {
 struct line inc[LINE_NB];
 struct line out[LINE_NB];
 WINDOW * title = NULL;
-char   mon_name[IFNAMSIZ];
+char   mon_name[IF_NAMESIZE];
 char   static_flags;
 
 #define EVALLINK_FLAG_DAEMON   0x01
@@ -420,7 +420,7 @@ listen_on(in_port_t port, const char* mon_interface, const uint32_t phy_interfac
     return NULL;
   }
 
-  strncpy(mon_name, mon_interface, IFNAMSIZ);
+  strncpy(mon_name, mon_interface, IF_NAMESIZE);
 
   /* Init event */
   event = (struct ev_io*) malloc(sizeof(struct ev_io));

@@ -26,7 +26,7 @@
 
 struct udp_io_t {
   struct mon_io_t mon;
-  char mon_name[IFNAMSIZ];
+  char mon_name[IF_NAMESIZE];
   char addr_s[ADDR_BUF_SIZE];
   char date[TIME_SIZE];
   char header[HDR_SIZE];
@@ -129,7 +129,7 @@ listen_on(in_port_t port, const char* mon_interface, const uint32_t phy_interfac
   }
   assert(mon == &buffer->mon);
 
-  strncpy(buffer->mon_name, mon_interface, IFNAMSIZ);
+  strncpy(buffer->mon_name, mon_interface, IF_NAMESIZE);
   buffer->filename = filename;
   buffer->encode = encode;
 
