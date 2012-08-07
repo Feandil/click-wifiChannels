@@ -12,7 +12,7 @@ struct ieee80211_radiotap_iterator {
 
 	ssize_t len;
         uint32_t bitmap;
-	uint8_t index;
+	unsigned int index;
 };
 
 int ieee80211_radiotap_iterator_init(struct ieee80211_radiotap_iterator * iterator, struct ieee80211_radiotap_header * radiotap_header, ssize_t len);

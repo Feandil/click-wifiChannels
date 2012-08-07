@@ -156,7 +156,7 @@ zread_line(struct zutil_read *buffer, ssize_t *len)
   if (buffer->start >= buffer->end) {
     next = NULL;
   } else {
-    next = memchr(buffer->start, '\n', buffer->end - buffer->start);
+    next = memchr(buffer->start, '\n', (size_t)(buffer->end - buffer->start)); // We just checked it was >= 0
   }
 
   if (next != NULL) {
@@ -178,13 +178,15 @@ zread_line(struct zutil_read *buffer, ssize_t *len)
     }
     if (buffer->swapped) {
       if (buffer->end != buffer->in + IN_BUF_SIZE) {
+        assert(buffer->end >= buffer->start);
         cur = buffer->in + IN_BUF_SIZE - (buffer->end - buffer->start);
-        memmove(cur, buffer->start, buffer->end - buffer->start);
+        memmove(cur, buffer->start, (size_t)(buffer->end - buffer->start));
       } else {
         cur = buffer->start;
       }
       buffer->end = buffer->in + (2 * IN_BUF_SIZE) - buffer->strm.avail_out;
-      next = memchr(cur, '\n', buffer->end - cur);
+      assert(buffer->end >= cur);
+      next = memchr(cur, '\n', (size_t)(buffer->end - cur));
       if (next != NULL) {
         *next = '\0';
         *len = next - cur;
@@ -207,6 +209,7 @@ zread_line(struct zutil_read *buffer, ssize_t *len)
     } else {
       next = memchr(buffer->in, '\n', IN_BUF_SIZE - buffer->strm.avail_out);
       if (next != NULL) {
+        assert(next >= buffer->in);
         *next = '\0';
         if (buffer->start < buffer->end) {
           *len = (buffer->end - buffer->start) + (next - buffer->in);
@@ -215,8 +218,8 @@ zread_line(struct zutil_read *buffer, ssize_t *len)
             PRINTF("zutil read : line too long 2\n")
             return NULL;
           }
-          memmove(buffer->in + IN_BUF_SIZE, buffer->start, buffer->end - buffer->start);
-          memmove(buffer->in + IN_BUF_SIZE + (buffer->end - buffer->start), buffer->in, next - buffer->in);
+          memmove(buffer->in + IN_BUF_SIZE, buffer->start, (size_t) (buffer->end - buffer->start)); // Checked in the "if"
+          memmove(buffer->in + IN_BUF_SIZE + (buffer->end - buffer->start), buffer->in, (size_t) (next - buffer->in));
           *(buffer->in + IN_BUF_SIZE + *len) = '\0';
           buffer->start = next + 1;
           buffer->end = buffer->in + IN_BUF_SIZE - buffer->strm.avail_out;
@@ -228,6 +231,7 @@ zread_line(struct zutil_read *buffer, ssize_t *len)
           return buffer->in;
         }
       } else if (buffer->strm.avail_out != 0) {
+        assert(buffer->strm.avail_out <= IN_BUF_SIZE);
         if (buffer->strm.avail_out == IN_BUF_SIZE) {
           if (buffer->start != buffer->end) {
             *buffer->end = '\0';
@@ -240,16 +244,17 @@ zread_line(struct zutil_read *buffer, ssize_t *len)
             return NULL;
           }
         } else if (buffer->start == buffer->end) {
-          *len = IN_BUF_SIZE - buffer->strm.avail_out;
+          *len = (ssize_t)(IN_BUF_SIZE - buffer->strm.avail_out); // We just checked that this was > 0 and it's < IN_BUF_SIZE which should be < SSIZE_MAX
           return buffer->in;
         } else {
-          *len = (buffer->end - buffer->start) + (IN_BUF_SIZE - buffer->strm.avail_out);
+          *len = (buffer->end - buffer->start) + ((ssize_t)(IN_BUF_SIZE - buffer->strm.avail_out)); // We just checked that this was > 0 and it's < IN_BUF_SIZE which should be < SSIZE_MAX
           if (*len >= IN_BUF_SIZE) {
             *len = -2;
             PRINTF("zutil read : line too long 3\n")
             return NULL;
           }
-          memmove(buffer->in + IN_BUF_SIZE, buffer->start, buffer->end - buffer->start);
+          assert(buffer->end >= buffer->start);
+          memmove(buffer->in + IN_BUF_SIZE, buffer->start, (size_t)(buffer->end - buffer->start));
           memmove(buffer->in + IN_BUF_SIZE + (buffer->end - buffer->start), buffer->in, IN_BUF_SIZE - buffer->strm.avail_out);
           *(buffer->in + IN_BUF_SIZE + *len) = '\0';
           buffer->start = buffer->in + IN_BUF_SIZE;

@@ -87,7 +87,7 @@ event_end(struct ev_loop *loop, struct ev_timer *w, int revents)
 
 
 static void
-ncurses_init()
+ncurses_init(void)
 {
   int pos;
   int y_pos;
@@ -128,7 +128,7 @@ ncurses_init()
 }
 
 static void
-ncurses_stop()
+ncurses_stop(void)
 {
   int pos;
 
@@ -147,13 +147,14 @@ ncurses_stop()
   endwin();
 }
 
-static void update_time();
+static void update_time(void);
 
 static void
 send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
 {
   int pos;
-  ssize_t len, sent_len;
+  size_t len;
+  ssize_t sent_len;
   struct udp_io_t *buffer;
   struct timespec stamp;
   struct timespec tmp;
@@ -188,7 +189,8 @@ send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
     PERROR("sendto")
     return;
   }
-  assert(sent_len == len);
+  assert(sent_len >= 0);
+  assert(((size_t)sent_len) == len);
   if (!(static_flags & EVALLINK_FLAG_DAEMON)) {
     update_time();
   }
@@ -249,7 +251,7 @@ send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, cons
   wprintw(win, __VA_ARGS__);                      \
   wrefresh(win);
 
-static void inline
+inline static void
 update_time_table(struct line table[], char* tmp, struct timespec *stamp)
 {
   int pos, size;
@@ -287,13 +289,13 @@ update_time()
 
 static void
 consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct in6_addr *from, \
-             const char* data, ssize_t len, uint16_t machdr_fc, void* arg)
+             const char* data, size_t len, uint16_t machdr_fc, void* arg)
 {
   char tmp[TMP_BUF];
   const char *ret;
   int size, pos, addr_pos;
   struct mon_io_t *mon;
-  struct in_air *incoming;
+  const struct in_air *incoming;
 
   mon = (struct mon_io_t*)arg;
   assert(mon != NULL);
@@ -352,7 +354,7 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
           NCURSES_REWRITE_WINDOW_CONTENT(title, "%s", tmp)
           wrefresh(title);
         }
-        incoming = (struct in_air*) data;
+        incoming = (const struct in_air*) data;
         while (*incoming->ip.s6_addr32 != 0) {
           if (memcmp(&incoming->ip, &mon->ip_addr[addr_pos], sizeof(struct in6_addr)) == 0) {
             for (pos = 0; pos < LINE_NB; ++pos) {
@@ -406,7 +408,7 @@ listen_cb(struct ev_loop *loop, ev_io *io, int revents)
 }
 
 static struct ev_io*
-listen_on(in_port_t port, const char* mon_interface, const int phy_interface, const char* wan_interface, \
+listen_on(in_port_t port, const char* mon_interface, const uint32_t phy_interface, const char* wan_interface, \
           const struct in6_addr* multicast)
 {
   struct ev_io* event;

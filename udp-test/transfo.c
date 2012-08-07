@@ -40,15 +40,15 @@ int32_t *global_buffer_sec, *global_buffer_nsec;
 uint32_t *global_buffer_num;
 int32_t sec_min, nsec_min;
 
-#define FWRITE(file, c, bloc, len)            \
-  ret = fwrite(c, bloc, len, file);           \
-  if ((ret != (int)(len))) {                  \
-    PRINTF("Unable to write to outputfile: ") \
-    PRINTF("%i VS %u (%u)\n", ret, len, bloc) \
-    exit(1);                                  \
-  } else if (ferror(file)) {                  \
-    PERROR("fwrite");                         \
-    exit(1);                                  \
+#define FWRITE(file, c, bloc, len)             \
+  uret = fwrite(c, bloc, len, file);           \
+  if ((uret != (int)(len))) {                  \
+    PRINTF("Unable to write to outputfile: ")  \
+    PRINTF("%u VS %u (%u)\n", uret, len, bloc) \
+    exit(1);                                   \
+  } else if (ferror(file)) {                   \
+    PERROR("fwrite");                          \
+    exit(1);                                   \
   }
 
 #define MEMCHR(dest, src, tgt, len)           \
@@ -59,7 +59,8 @@ int32_t sec_min, nsec_min;
   }                                           \
   *dest = 0;                                  \
   ++dest;                                     \
-  len -= dest - src;
+  assert(dest > src);                         \
+  len -= (unsigned)(dest - src);
 
 #define SSCANF(dest, pos)                     \
   if (sscanf(pos, "%"SCNd32, &dest) != 1) {   \
@@ -70,11 +71,10 @@ int32_t sec_min, nsec_min;
 #define MIN_LEN  6      // " IP address: 3 '.', ',' '.' ','
 
 inline static void extract(char* incoming, uInt len) {
-  int ret;
   char *flag, *db, *rate, *sec1_pos, *nsec1_pos, *sec2_pos, *nsec2_pos, *count_pos;
   uint32_t max, tmp;
   int32_t sec1, nsec1, sec2, nsec2, sec, nsec;
-  size_t i, j;
+  size_t i, j, uret;
 
   if (len < MIN_LEN) {
     return;
@@ -166,7 +166,8 @@ inline static void consume(const bool swaped) {
   available = BUF_SIZE - strm.avail_out;
   pos = memchr(newIn, '\n', available);
   while(pos != NULL) {
-    temp_len = pos - newIn + 1;
+    assert(pos >= newIn);
+    temp_len = ((unsigned)(pos - newIn)) + 1;
     available -= temp_len;
     *pos = '\0';
     if (trash != 0) {

@@ -1,5 +1,7 @@
-CFLAGS?=-pipe -O2 -g -Wall -Werror -Wchar-subscripts -Wundef -Wshadow -Wwrite-strings -Wsign-compare -Wunused -Wno-unused-parameter -Wuninitialized -Winit-self -Wredundant-decls \
--Wformat-nonliteral -Wno-format-zero-length -Wno-format-y2k -Wmissing-format-attribute -Wsequence-point -Wparentheses -Wmissing-declarations -Wpointer-arith
+CFLAGS?=-pipe -O2 -g -Wall -Wextra -Werror -Wchar-subscripts -Wundef -Wshadow -Wwrite-strings -Wsign-compare -Wunused -Wno-unused-parameter -Wuninitialized -Winit-self \
+-Wredundant-decls -Wformat-nonliteral -Wno-format-zero-length -Wno-format-y2k -Wmissing-format-attribute -Wsequence-point -Wparentheses -Wmissing-declarations -Wpointer-arith \
+-Wcast-qual -Wcast-align -Wstrict-prototypes -Wmissing-prototypes -Wconversion
+# -Wtraditionnal -pedantic
 
 LZ_LIBS ?= -lz
 NL_LIBS ?= -lnl-3 -lnl-genl-3
@@ -19,6 +21,10 @@ all: server client transfo evallink extract
 
 monitor.o: monitor.c
 	$(COMPILE.c) $(SOTIMESTAMP_INCLUDE) $(NL_INCLUDE) $(OUTPUT_OPTION) $<
+
+#As we cast something to zlib structure that do not support "const", zutil cannot be compiled with cast-qual
+zutil.o: zutil.c
+	$(COMPILE.c) -Wno-cast-qual $(OUTPUT_OPTION) $<
 
 server: server.o zutil.o $(MONITOR_DEP)
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(EV_LIBS) $(RT_LIBS) $(NL_LIBS) -o $@

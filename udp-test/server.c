@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <arpa/inet.h>
 #include <inttypes.h>
+#include <errno.h>
 #include <ev.h>
 #include <getopt.h>
 #include <net/if.h>
@@ -58,7 +59,7 @@ drop_cb(struct ev_loop *loop, ev_io *io, int revents)
 
 static void
 consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct in6_addr *from, \
-             const char* data, ssize_t len, uint16_t machdr_fc, void* arg)
+             const char* data, size_t len, uint16_t machdr_fc, void* arg)
 {
   const char *addr;
   const char *end;
@@ -79,17 +80,19 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
     tmp = snprintf(in->header, HDR_SIZE, ",,%"PRIi8",%"PRIu8, signal, rate);
   }
   assert (tmp > 0);
-  zadd_data(&in->zdata, in->header, tmp);
+  zadd_data(&in->zdata, in->header, (size_t)tmp);
 
+  assert(len > 0);
   end = memchr(data, '|', len);
   if (end == NULL) {
     zadd_data(&in->zdata, data, len);
   } else {
-    zadd_data(&in->zdata, data, end - data);
+    assert(end > data);
+    zadd_data(&in->zdata, data, (size_t)(end - data));
   }
   tmp = snprintf(in->date, TIME_SIZE, ",%ld.%09ld\n", stamp->tv_sec, stamp->tv_nsec);
   assert(tmp > 0);
-  zadd_data(&in->zdata, in->date, tmp);
+  zadd_data(&in->zdata, in->date, (size_t)tmp);
 }
 
 static void
@@ -103,7 +106,7 @@ read_cb(struct ev_loop *loop, ev_io *io, int revents)
 }
 
 static struct ev_io*
-listen_on(in_port_t port, const char* mon_interface, const int phy_interface, const char* wan_interface, \
+listen_on(in_port_t port, const char* mon_interface, const uint32_t phy_interface, const char* wan_interface, \
           const struct in6_addr* multicast, FILE* out, int encode, char* filename)
 {
   int tmp;
@@ -215,7 +218,7 @@ reload_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
   /* Try to open the new file */
   dest = fopen(in->filename, "w");
   if (dest == NULL) {
-    fprintf(stderr, "Unable to change the name of the output file: Unable to open output file (%s)\n", in->filename);
+    fprintf(stderr, "Unable to change the name of the output file: Unable to open output file (%s) : %i\n", in->filename, errno);
     return;
   }
 

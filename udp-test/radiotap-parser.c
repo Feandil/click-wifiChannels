@@ -53,7 +53,7 @@ ieee80211_radiotap_iterator_init(struct ieee80211_radiotap_iterator *iterator, s
   }
   iterator->bitmap = __le32_to_cpu(radiotap_header->it_present);
   /* We do not support the extension mask */
-  if (unlikely(iterator->bitmap & IEEE80211_RADIOTAP_PRESENT_EXTEND_MASK)) {
+  if (unlikely((iterator->bitmap & IEEE80211_RADIOTAP_PRESENT_EXTEND_MASK) != 0)) {
     return -EINVAL;
   }
   iterator->hdr = radiotap_header;
@@ -68,7 +68,7 @@ ieee80211_radiotap_iterator_init(struct ieee80211_radiotap_iterator *iterator, s
 int
 ieee80211_radiotap_iterator_next(struct ieee80211_radiotap_iterator *iterator, uint8_t max_index)
 {
-  uint8_t index = 0;
+  unsigned int index = 0;
   /*
    * small length lookup table for all radiotap types we heard of
    * starting from b0 in the bitmap, so we can walk the payload
@@ -117,10 +117,11 @@ ieee80211_radiotap_iterator_next(struct ieee80211_radiotap_iterator *iterator, u
       return -EINVAL;
     }
 next_entry:
-    iterator->index++;
+    ++iterator->index;
     iterator->bitmap >>= 1;
     if (index != 0) {
-      return (index - 1);
+      /* index is bound by uint8_max + 1 thus cannot overflow int */
+      return (int)(index - 1);
     }
   }
   return -1;

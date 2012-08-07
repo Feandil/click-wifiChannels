@@ -56,7 +56,8 @@ static void event_cb(struct ev_loop *loop, ev_periodic *periodic, int revents) {
   } else {
     --len;
   }
-  sent_len = sendto(buffer->fd, buffer->buf, len, 0, (struct sockaddr *)&buffer->addr, sizeof(struct sockaddr_in6));
+  /* The previous checks and modifications assures that len >= 0 */
+  sent_len = sendto(buffer->fd, buffer->buf, (size_t)len, 0, (struct sockaddr *)&buffer->addr, sizeof(struct sockaddr_in6));
   if (sent_len == -1) {
     PERROR("sendto")
     return;

@@ -33,7 +33,6 @@ struct array_list_u64 {
 static void
 increment_counter(struct array_list_u64 *list, uint64_t count)
 {
-  assert(count >= 0);
   assert(list != NULL);
   if (count >= LIST_STEP) {
     if (list->next == NULL) {
@@ -140,10 +139,10 @@ read_input(struct state *in_state)
     }
     return -1;
   }
-  assert(len > 0);
+  assert(len >= 0);
 
   /* Verify the IP address */
-  next = memchr(buffer, ',', len);
+  next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
     printf("Bad input format (no closing ',' for the IP address field : ''%.*s'')\n", len, buffer);
     goto exit;
@@ -172,7 +171,8 @@ read_input(struct state *in_state)
   buffer = next;
 
   /* Skip the flag field */
-  next = memchr(buffer, ',', len);
+  assert(len >= 0);
+  next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
     printf("Bad input format (no closing ',' for the flag field : ''%.*s'')\n", len, buffer);
     goto exit;
@@ -182,7 +182,8 @@ read_input(struct state *in_state)
   buffer = next;
 
   /* Store the signal strengh */
-  next = memchr(buffer, ',', len);
+  assert(len >= 0);
+  next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
     printf("Bad input format (no closing ',' for the signal field : ''%.*s'')\n", len, buffer);
     goto exit;
@@ -199,7 +200,8 @@ read_input(struct state *in_state)
   buffer = next;
 
   /* Skip the signal field */
-  next = memchr(buffer, ',', len);
+  assert(len >= 0);
+  next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
     printf("Bad input format (no closing ',' for the rate field : ''%.*s'')\n", len, buffer);
     goto exit;
@@ -209,7 +211,8 @@ read_input(struct state *in_state)
   buffer = next;
 
   /* Look at the origin timestamp field */
-  next = memchr(buffer, ',', len);
+  assert(len >= 0);
+  next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
     printf("Bad input format (no closing ',' for the origin timestamp field : ''%.*s'')\n", len, buffer);
     goto exit;
@@ -227,7 +230,8 @@ read_input(struct state *in_state)
   buffer = next;
 
   /* Read the count field */
-  next = memchr(buffer, ',', len);
+  assert(len >= 0);
+  next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
     printf("Bad input format (no closing ',' for the sent timestamp field : ''%.*s'')\n", len, buffer);
     goto exit;
@@ -355,7 +359,7 @@ next_line_or_file(struct state *in_state)
   return next_line_or_file(in_state);
 }
 
-static void inline
+inline static void
 temporal_dependence(uint8_t new_state)
 {
   uint8_t *current, *end;
@@ -436,19 +440,19 @@ static int
 first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
 {
   ssize_t tmp;
-  int64_t age[2];
-  int64_t i;
+  uint64_t age[2];
+  uint64_t i;
   double   ts;
 
+  assert(states[0].count_new >= states[0].count_old);
   age[0] = states[0].count_new - states[0].count_old;
+  assert(states[1].count_new >= states[1].count_old);
   age[1] = states[1].count_new - states[1].count_old;
 
-  assert(age[0] >= 0);
-  assert(age[1] >= 0);
   assert((states[0].count_old - states[1].count_old) == sync_count_diff);
   if (age[0] == age[1]) {
     ts = states[0].timestamp - states[1].timestamp;
-    if (abs(ts) > secure_interval) {
+    if (fabs(ts) > secure_interval) {
       printf("Desynchronisation between %"PRIu64" et %"PRIu64"\n", states[0].count_new, states[1].count_new);
       exit(4);
     }
@@ -531,19 +535,19 @@ static int
 second_pass(FILE* out, bool print, struct second_run *data, struct state *states)
 {
   ssize_t tmp;
-  int64_t age[2];
-  int64_t i;
+  uint64_t age[2];
+  uint64_t i;
   double   ts;
 
+  assert(states[0].count_new >= states[0].count_old);
   age[0] = states[0].count_new - states[0].count_old;
+  assert(states[1].count_new >= states[1].count_old);
   age[1] = states[1].count_new - states[1].count_old;
 
-  assert(age[0] >= 0);
-  assert(age[1] >= 0);
   assert((states[0].count_old - states[1].count_old) == sync_count_diff);
   if (age[0] == age[1]) {
     ts = states[0].timestamp - states[1].timestamp;
-    if (abs(ts) > secure_interval) {
+    if (fabs(ts) > secure_interval) {
       printf("Desynchronisation between %"PRIu64" et %"PRIu64"\n", states[0].count_new, states[1].count_new);
       exit(4);
     }
@@ -681,7 +685,7 @@ print_stats(struct first_run *data, struct statistics* stats)
   }
   printf("%"PRIu64"]\n", temp->data[LIST_STEP - 1]);
 
-  printf("Estimation (N0,0) : %lf (VS %"PRIu64")\n", ((double)stats->partial_i[0]) / stats->total * ((double)stats->partial_j[0]), u64_stats[0][0]);
+  printf("Estimation (N0,0) : %lf (VS %"PRIu64")\n", ((double)stats->partial_i[0]) / ((double)stats->total) * ((double)stats->partial_j[0]), u64_stats[0][0]);
 
   printf("Simple model (0,. and .,0 independant, common error q):\n");
 
@@ -699,8 +703,8 @@ print_stats(struct first_run *data, struct statistics* stats)
   long double mean[2], stand_dev[2], covar;
   mean[0] = ((long double)stats->partial_i[1]) / ((long double)stats->total);
   mean[1] = ((long double)stats->partial_j[1]) / ((long double)stats->total);
-  stand_dev[0] = sqrt((mean[0] * mean[0] * stats->partial_i[0] + (1 - mean[0]) * (1 - mean[0]) * stats->partial_i[1]) / stats->total);
-  stand_dev[1] = sqrt((mean[1] * mean[1] * stats->partial_j[0] + (1 - mean[1]) * (1 - mean[1]) * stats->partial_j[1]) / stats->total);
+  stand_dev[0] = sqrtl((mean[0] * mean[0] * ((long double)stats->partial_i[0]) + (1 - mean[0]) * (1 - mean[0]) * ((long double)stats->partial_i[1])) / ((long double)stats->total));
+  stand_dev[1] = sqrtl((mean[1] * mean[1] * ((long double)stats->partial_j[0]) + (1 - mean[1]) * (1 - mean[1]) * ((long double)stats->partial_j[1])) / ((long double)stats->total));
   covar = (0 - mean[0]) * (0 - mean[1]) * u64_stats[0][0] + (1 - mean[0]) * (0 - mean[1]) * u64_stats[1][0] + (0 - mean[0]) * (1 - mean[1]) * u64_stats[0][1] + (1 - mean[0]) * (1 - mean[1]) * u64_stats[1][1];
   printf(" I : %Lf\n", stand_dev[0]);
   printf(" J : %Lf\n", stand_dev[1]);
@@ -806,7 +810,8 @@ print_histo(FILE *histo_output)
 #undef LIMIT_MAX_VAL
 
   fprintf(histo_output, "Trying to visualize difference with independant variables:\n");
-  independant = calloc((1 << (k + 1)), sizeof(uint64_t));
+  assert((k >= 0) && (k <= 15));
+  independant = calloc(((size_t)1) << (k + 1), sizeof(uint64_t));
   total = 0;
   for (i = 0; i < histo_mod; ++i) {
     for (j = 0; j < histo_mod; ++j) {
@@ -831,7 +836,7 @@ print_histo(FILE *histo_output)
   fprintf(histo_output, "%"PRIi64"]\n", INDEP(histo_mod - 1, histo_mod - 1));
 
   fprintf(histo_output, " Diff:\n");
-#define INDEP_DIFF(i,j)  (compare_histo[((i) * histo_mod) + j] - INDEP(i,j))
+#define INDEP_DIFF(i,j)  ((int64_t)(compare_histo[((i) * histo_mod) + j] - INDEP(i,j)))
   fprintf(histo_output, "  [");
   for (i = 0; i < histo_mod - 1; ++i) {
     for (j = 0; j < histo_mod - 1; ++j) {
@@ -987,6 +992,7 @@ main(int argc, char *argv[])
   FILE *histo_corr_file = NULL;
   FILE *signal_output = NULL;
   char *tmp_c;
+  size_t uret;
   ssize_t sret;
   bool stats = false;
   bool print = false;
@@ -1140,8 +1146,8 @@ PRINTF("Debug enabled\n")
           printf("Error, k needs to be <= 15\n");
           usage(-2, argv[0]);
         }
-        histo_mod = 1 << k;
-        compare_histo = calloc((1 << (2 * k)), sizeof(uint64_t));
+        histo_mod = ((uint32_t) 1) << k;
+        compare_histo = calloc(((size_t)1) << (2 * k), sizeof(uint64_t));
         if (compare_histo == NULL) {
           printf("Malloc error\n");
           exit(-1);
@@ -1368,9 +1374,9 @@ PRINTF("Debug enabled\n")
     for (i = 0; i < pos; ++i) {
       if (states[i].input.filename_count_start >= 0) {
         states[i].input.filename_count = states[i].input.filename_count_start;
-        sret = strlen(states[i].input.filename);
-        assert(sret > 7);
-        snprintf(states[i].input.filename + (sret - 6), 7, "%03i.gz", states[i].input.filename_count);
+        uret = strlen(states[i].input.filename);
+        assert(uret > 7);
+        snprintf(states[i].input.filename + (uret - 6), 7, "%03i.gz", states[i].input.filename_count);
       }
       tmp = fopen(states[i].input.filename, "r");
       if (tmp == NULL || ferror(tmp)) {

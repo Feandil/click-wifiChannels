@@ -37,10 +37,10 @@ static int ack_handler(struct nl_msg *msg, void *arg)
   return NL_STOP;
 }
 
-typedef int (*set_80211_message) (struct nl_msg *nlmsg, const int nlid, const char* arg_char, const int arg_int);
+typedef int (*set_80211_message) (struct nl_msg *nlmsg, const int nlid, const char* arg_char, const uint32_t arg_int);
 
 static int
-create_monitor_interface(struct nl_msg *nlmsg, const int nlid, const char* arg_char, const int arg_int)
+create_monitor_interface(struct nl_msg *nlmsg, const int nlid, const char* arg_char, const uint32_t arg_int)
 {
   int ret;
 
@@ -64,7 +64,7 @@ create_monitor_interface(struct nl_msg *nlmsg, const int nlid, const char* arg_c
 }
 
 static int
-delete_interface(struct nl_msg *nlmsg, const int nlid, const char* arg_char, const int arg_int)
+delete_interface(struct nl_msg *nlmsg, const int nlid, const char* arg_char, const uint32_t arg_int)
 {
   int ret;
   unsigned if_id;
@@ -85,7 +85,7 @@ delete_interface(struct nl_msg *nlmsg, const int nlid, const char* arg_char, con
 }
 
 static int
-send_nl80211_message(set_80211_message content, const char* arg_char, const int arg_int)
+send_nl80211_message(set_80211_message content, const char* arg_char, const uint32_t arg_int)
 {
   /* nl80211 messaging structures */
   struct nl_sock *nlsock = NULL;
@@ -168,7 +168,7 @@ message_socket_clean:
 
 
 int
-open_monitor_interface(const char *interface, const int phy_inter) {
+open_monitor_interface(const char *interface, const uint32_t phy_inter) {
 
   /* Return Value */
   int ret;
@@ -263,7 +263,7 @@ void read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, vo
   int tmp;
   char match;
   ssize_t len;
-  uint16_t radiotap_len;
+  int radiotap_len;
   struct cmsghdr *chdr;
   struct timespec date;
   struct timespec *stamp;
@@ -307,8 +307,8 @@ void read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, vo
       /* Radiotap starts with 2 zeros */
       return;
     }
-    radiotap_len = (((uint16_t) in->buf[3])<<8) + ((uint16_t) in->buf[2]);
-    if (radiotap_len > (unsigned) len) {
+    radiotap_len = (((uint16_t)in->buf[3]) << 8) + ((uint8_t)in->buf[2]);
+    if (radiotap_len > len) {
       /* Packet too short */
       return;
     }
@@ -354,28 +354,31 @@ void read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, vo
       return;
     }
 
-    if (crc32_80211((uint8_t*) machdr, len - 4) != *((uint32_t*)(((uint8_t*) machdr) + (len - 4)))) {
+    assert(len > 4);
+    if (crc32_80211((const uint8_t*) machdr, (size_t)(len - 4)) != *((const uint32_t*)(((const uint8_t*) machdr) + (len - 4)))) {
       /* Bad_ CRC */
       return;
     }
 
     /* Check if there is a QoS field */
     if ((machdr->fc & 0xf0) == 0x80) {
-      llchdr = (struct header_llc*) (((uint8_t*) machdr) + sizeof (struct header_80211) + 2);
+      llchdr = (const struct header_llc*) (((const uint8_t*) machdr) + sizeof (struct header_80211) + 2);
       len -= 2;
     } else {
-      llchdr = (struct header_llc*) (machdr + 1);
+      llchdr = (const struct header_llc*) (machdr + 1);
     }
     if (llchdr->type != 0xdd86) {
       /* Non ipv6 traffic */
       return;
     }
-    iphdr = (struct header_ipv6*) (llchdr + 1);
+    iphdr = (const struct header_ipv6*) (llchdr + 1);
     if (iphdr->version != 0x06) {
       /* Non ipv6 traffic */
       return;
     }
-    len -= sizeof(struct header_80211) + sizeof(struct header_llc) + sizeof(struct header_ipv6) + sizeof(struct header_udp);
+/* sizeof will be smaller that the maximum of ssize_t thus this shouldn't be a problem */
+#define SSIZE_OF(a)  ((ssize_t)sizeof(a))
+    len -= SSIZE_OF(struct header_80211) + SSIZE_OF(struct header_llc) + SSIZE_OF(struct header_ipv6) + SSIZE_OF(struct header_udp);
 
     switch (match) {
       case READ_CB_MATCH_MULTI:
@@ -400,7 +403,7 @@ void read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, vo
       return;
     }
 
-    udphdr = (struct header_udp*) (iphdr + 1);
+    udphdr = (const struct header_udp*) (iphdr + 1);
     if (udphdr->dst_port != in->port) {
       /* Not the good destination */
       return;
@@ -408,17 +411,19 @@ void read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, vo
 
     len -= 4; /* Forget the radio footer */
 
-    if (ntohs(udphdr->len) != len + sizeof(struct header_udp)) {
+    if (ntohs(udphdr->len) != len + SSIZE_OF(struct header_udp)) {
       /* Bad packet : bad length */
       return;
     }
+#undef SSIZE_OF
 
-    (*consume)(stamp, rate, signal, (struct in6_addr*)iphdr->src, (char*) (udphdr + 1), len, machdr->fc, arg);
+    assert(len > 0);
+    (*consume)(stamp, rate, signal, (const struct in6_addr*)iphdr->src, (const char*) (udphdr + 1), (size_t)len, machdr->fc, arg);
   }
 }
 
 struct mon_io_t*
-monitor_listen_on(struct mon_io_t* mon, in_port_t port, const char* mon_interface, const int phy_interface, \
+monitor_listen_on(struct mon_io_t* mon, in_port_t port, const char* mon_interface, const uint32_t phy_interface, \
                   const char* wan_interface, const struct in6_addr* multicast, char first)
 {
   int fd, tmp, so_stamp, tmp_fd;
@@ -463,7 +468,8 @@ monitor_listen_on(struct mon_io_t* mon, in_port_t port, const char* mon_interfac
   }
   /* Bind Socket */
   mon->ll_addr.sll_family = AF_PACKET;
-  mon->ll_addr.sll_ifindex = if_id;
+  assert (((int)if_id) > 0);
+  mon->ll_addr.sll_ifindex = (int) if_id;
 
   if (bind(fd, (struct sockaddr *)&mon->ll_addr, sizeof(struct sockaddr_ll)) < 0) {
     PERROR("bind()")
