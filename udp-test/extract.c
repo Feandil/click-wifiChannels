@@ -248,6 +248,10 @@ read_input(struct state *in_state)
     printf("Bad input format (count isn't a uint64: ''%.*s'')\n", len, buffer);
     goto exit;
   }
+  if ((in_state->count_new <= in_state->count_old) && (in_state->count_new != 0)) {
+    printf("Bad input format (count isn't strictly increasing %"PRIu64" after %"PRIu64")\n", in_state->count_new, in_state->count_old);
+    goto exit;
+  }
   ++next;
   len -= (next - buffer);
   buffer = next;
