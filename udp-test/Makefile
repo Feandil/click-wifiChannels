@@ -1,6 +1,23 @@
-CFLAGS?=-pipe -O2 -g -Wall -Wextra -Werror -Wchar-subscripts -Wundef -Wshadow -Wwrite-strings -Wsign-compare -Wunused -Wno-unused-parameter -Wuninitialized -Winit-self \
--Wredundant-decls -Wformat-nonliteral -Wno-format-zero-length -Wno-format-y2k -Wmissing-format-attribute -Wsequence-point -Wparentheses -Wmissing-declarations -Wpointer-arith \
--Wcast-qual -Wcast-align -Wstrict-prototypes -Wmissing-prototypes -Wconversion
+CFLAGS?=-pipe -O2 -g -Wall -Wextra -Werror \
+	-Wcast-qual \
+	-Wcast-align \
+	-Wconversion \
+	-Wformat-nonliteral \
+	-Winit-self \
+	-Wmissing-declarations \
+	-Wmissing-format-attribute \
+	-Wmissing-prototypes \
+	-Wpointer-arith \
+	-Wredundant-decls \
+	-Wshadow \
+	-Wstrict-prototypes \
+	-Wwrite-strings \
+	-Wundef \
+	-Wunused \
+	-Wno-unused-parameter \
+	-Wno-format-zero-length \
+	-Wno-format-y2k
+
 # -Wtraditionnal -pedantic
 
 LZ_LIBS ?= -lz
