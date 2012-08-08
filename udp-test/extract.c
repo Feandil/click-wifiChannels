@@ -66,8 +66,11 @@ struct state
   uint64_t        count_new;
   uint64_t        count_old;
   double          timestamp;
+  double          timestamp_old;
   int8_t          signal_new;
   int8_t          signal_old;
+  uint64_t        desynchronization_drop_internal;
+  uint64_t        desynchronization_drop_external;
 };
 
 struct first_run
@@ -103,6 +106,7 @@ struct state *states_for_interrupt;
 #define SOURCES 2
 
 uint64_t sync_count_diff;
+double   interval;
 double   secure_interval;
 
 uint64_t u64_stats[2][2];
@@ -131,6 +135,7 @@ read_input(struct state *in_state)
   char *buffer, *next;
   struct in6_addr ip;
   int tmp;
+  double temp_ts;
 
   buffer = zread_line(&in_state->input.input, &len);
   if (buffer == NULL) {
@@ -256,6 +261,24 @@ read_input(struct state *in_state)
     }
   }
 
+  if (in_state->timestamp_old != 0) {
+     temp_ts = in_state->timestamp_old + interval * (double)(in_state->count_new - in_state->count_old);
+     if ((temp_ts - in_state->timestamp > secure_interval) || (in_state->timestamp - temp_ts > interval)) {
+       PRINTF("File %s, ", in_state->input.filename);
+       PRINTF("packet %"PRIu64" dropped because outside its window (%lf VS %lf)\n", in_state->count_new, in_state->timestamp, temp_ts)
+       in_state->signal_new = in_state->signal_old;
+       in_state->count_new = in_state->count_old;
+       ++in_state->desynchronization_drop_internal;
+       return 0;
+     } else {
+       if (in_state->timestamp < temp_ts) {
+          in_state->timestamp_old = in_state->timestamp;
+       } else {
+         in_state->timestamp_old = temp_ts;
+       }
+    }
+  }
+
   return 1;
 exit:
   printf("Error parsing input file %s (last count : %"PRIu64"\n", in_state->input.filename, in_state->count_new);
@@ -312,7 +335,9 @@ synchronize_input(struct state* states)
   }
   sync_count_diff = states[0].count_new - states[1].count_new;
   states[0].count_old = states[0].count_new;
+  states[0].timestamp_old = states[0].timestamp;
   states[1].count_old = states[1].count_new;
+  states[1].timestamp_old = states[1].timestamp;
 }
 
 static int
@@ -452,9 +477,30 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
   assert((states[0].count_old - states[1].count_old) == sync_count_diff);
   if (age[0] == age[1]) {
     ts = states[0].timestamp - states[1].timestamp;
-    if (fabs(ts) > secure_interval) {
-      printf("Desynchronisation between %"PRIu64" et %"PRIu64"\n", states[0].count_new, states[1].count_new);
-      exit(4);
+    if (fabs(ts) > interval) {
+      if (fabs(states[0].timestamp_old - states[1].timestamp) > interval) {
+        ++states[1].desynchronization_drop_external;
+        PRINTF("File %s, ", states[1].input.filename);
+        PRINTF("packet %"PRIu64" dropped because outside the global window (%lf VS %lf)\n", states[1].count_new, states[1].timestamp, states[0].timestamp_old);
+        states[1].timestamp_old -= interval * (double)(states[1].count_new - states[1].count_old);
+        states[1].signal_new = states[1].signal_old;
+        states[1].count_new = states[1].count_old;
+        return next_line_or_file(states + 1);
+      } else if (fabs(states[1].timestamp_old - states[0].timestamp) > interval) {
+        ++states[0].desynchronization_drop_external;
+        PRINTF("File %s, ", states[0].input.filename);
+        PRINTF("packet %"PRIu64" dropped because outside the global window (%lf VS %lf)\n", states[0].count_new, states[0].timestamp, states[1].timestamp_old);
+        states[0].timestamp_old -= interval * (double)(states[0].count_new - states[0].count_old);
+        states[0].signal_new = states[0].signal_old;
+        states[0].count_new = states[0].count_old;
+        return next_line_or_file(states);
+      } else {
+        printf("Desynchronisation between %"PRIu64" and %"PRIu64"\n", states[0].count_new, states[1].count_new);
+        printf("current: %lf - %lf -> %lf (VS %lf)\n", states[0].timestamp, states[1].timestamp, fabs(ts), interval);
+        printf("ref:     %lf - %lf  \n", states[0].timestamp_old, states[1].timestamp_old);
+        printf("(%"PRIu64" and %"PRIu64")\n",states[0].count_old, states[1].count_old);
+        exit(4);
+      }
     }
     if (age[0] != 0) {
       for (i = age[0]; i > 1; --i) {
@@ -549,6 +595,8 @@ second_pass(FILE* out, bool print, struct second_run *data, struct state *states
     ts = states[0].timestamp - states[1].timestamp;
     if (fabs(ts) > secure_interval) {
       printf("Desynchronisation between %"PRIu64" et %"PRIu64"\n", states[0].count_new, states[1].count_new);
+      printf("current: %lf - %lf -> %lf (VS %lf)\n", states[0].timestamp, states[1].timestamp, fabs(ts), secure_interval);
+      printf("ref:     %lf - %lf\n", states[0].timestamp_old, states[1].timestamp_old);
       exit(4);
     }
     if (age[0] != 0) {
@@ -618,6 +666,14 @@ eval_stats(struct first_run *data)
   }
 
   return ret;
+}
+
+static void
+print_desynchronisation_stats(struct state *states)
+{
+  printf("Desynchronisation drops :\n");
+  printf(" Internals: %"PRIu64" and %"PRIu64"\n", states[0].desynchronization_drop_internal, states[1].desynchronization_drop_internal);
+  printf(" Externals: %"PRIu64" and %"PRIu64"\n", states[0].desynchronization_drop_external, states[1].desynchronization_drop_external);
 }
 
 static void
@@ -1003,6 +1059,7 @@ main(int argc, char *argv[])
   struct second_run *second = NULL;
 
   pos = 0;
+  interval = 0;
   secure_interval = 0;
   memset(u64_stats, 0, sizeof(uint64_t[2][2]));
   k = 0;
@@ -1037,11 +1094,11 @@ PRINTF("Debug enabled\n")
         stats = true;
         break;
       case 't':
-        if (secure_interval != 0) {
+        if (interval != 0) {
           printf("You can specify only one time slot duration\n");
           usage(-2, argv[0]);
         }
-        ret = sscanf(optarg, "%lf", &secure_interval);
+        ret = sscanf(optarg, "%lf", &interval);
         if (ret != 1) {
           printf("Bad time slot format\n");
           return -2;
@@ -1226,11 +1283,12 @@ PRINTF("Debug enabled\n")
     usage(-2, argv[0]);
   }
 
-  if (secure_interval == 0) {
+  if (interval == 0) {
     printf("No time slot duration specified, unable to synchronyse inputs\n");
     usage(-2, argv[0]);
   }
-  secure_interval /= 2000;
+  interval /= 1000;
+  secure_interval = interval / 2;
 
   if (histo_filename != NULL) {
     if (k == 0) {
@@ -1322,6 +1380,7 @@ PRINTF("Debug enabled\n")
   if (states[1].input.input.input != NULL) {
     zread_end(&states[1].input.input);
   }
+  print_desynchronisation_stats(states);
   printf("End at count: %"PRIu64", %"PRIu64"\n", states[0].count_new, states[1].count_new);
   if (sret < -1) {
     printf("Error before EOF : %i\n", sret);
