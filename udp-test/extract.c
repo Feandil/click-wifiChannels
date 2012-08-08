@@ -267,7 +267,11 @@ read_input(struct state *in_state)
 
   if (in_state->timestamp_old != 0) {
      temp_ts = in_state->timestamp_old + interval * (double)(in_state->count_new - in_state->count_old);
-     if ((temp_ts - in_state->timestamp > secure_interval) || (in_state->timestamp - temp_ts > interval)) {
+     if (temp_ts - in_state->timestamp > secure_interval) {
+        /* We are correcting this kind of drift at each step, thus this should not happen */
+        printf("Algorithmic error: a packet arrived too early\n");
+        goto exit;
+     } else if (in_state->timestamp - temp_ts > interval) {
        PRINTF("File %s, ", in_state->input.filename);
        PRINTF("packet %"PRIu64" dropped because outside its window (%lf VS %lf)\n", in_state->count_new, in_state->timestamp, temp_ts)
        in_state->signal_new = in_state->signal_old;
