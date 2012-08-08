@@ -937,54 +937,115 @@ static void
 print_histo_correlation(FILE *histo_corr_file, struct statistics* stats)
 {
   size_t i;
+  long double temp;
 
 #define PRINT_SEP                 \
   fprintf(histo_corr_file, ", ");
 
-#define PRINT_AXIS                                        \
-  fprintf(histo_corr_file, "[");                          \
-  for (i = 1; i < long_history_size; ++i)                 \
-    fprintf(histo_corr_file, "%zu ", i);                  \
-  fprintf(histo_corr_file, "%zu]", long_history_size);
+#define PRINT_AXIS                                          \
+  fprintf(histo_corr_file, "[1:1:%zu]", long_history_size);
 
-#define PRINT_PLOT_START             \
+#define PRINT_PLOT_START(a,b)                             \
+  fprintf(histo_corr_file, "%% %s:\n", a);                \
+  fprintf(histo_corr_file, "figure('Name','%s');\n", b);  \
   fprintf(histo_corr_file, "plot(");
 
-#define PRINT_CURVE(a,b,c)                                                                              \
+#define PRINT_PLOT_LINE_INFO(a)                        \
+  fprintf(histo_corr_file, ", '%s'", a);
+
+#define PRINT_REFERENCE(a,b)                   \
+  temp = a;                                    \
+  PRINT_AXIS                                   \
+  fprintf(histo_corr_file, ", [");             \
+  for (i = 0; i < long_history_size - 1; ++i)  \
+    fprintf(histo_corr_file, "%Lf ", temp);    \
+  fprintf(histo_corr_file, "%Lf]", temp);      \
+  PRINT_PLOT_LINE_INFO(b)
+//"
+
+#define PRINT_CURVE(a,b,c,d)                                                                            \
   PRINT_AXIS                                                                                            \
   fprintf(histo_corr_file, ", [");                                                                      \
   for (i = 0; i < long_history_size - 1; ++i)                                                           \
     fprintf(histo_corr_file, "%Lf ", histo_corr[i].data[a][b] / ((long double) c));                     \
-  fprintf(histo_corr_file, "%Lf]", histo_corr[long_history_size - 1].data[a][b] / ((long double) c));
+  fprintf(histo_corr_file, "%Lf]", histo_corr[long_history_size - 1].data[a][b] / ((long double) c));   \
+  PRINT_PLOT_LINE_INFO(d)
+//"
 
-#define PRINT_PLOT_END              \
-  fprintf(histo_corr_file, ");\n");
+#define PRINT_CURVE_SUM(a,b,c,d)                                                                                                                          \
+  PRINT_AXIS                                                                                                                                              \
+  fprintf(histo_corr_file, ", [");                                                                                                                        \
+  for (i = 0; i < long_history_size - 1; ++i)                                                                                                             \
+    fprintf(histo_corr_file, "%Lf ", (histo_corr[i].data[a][b] + histo_corr[i].data[a][0b00]) / ((long double) c));                                       \
+  fprintf(histo_corr_file, "%Lf]", (histo_corr[long_history_size - 1].data[a][b] + histo_corr[long_history_size - 1].data[a][0b00]) / ((long double) c)); \
+  PRINT_PLOT_LINE_INFO(d)
+//"
 
-  PRINT_PLOT_START
-  PRINT_CURVE(0b00,0b00, u64_stats[0][0])
+#define PRINT_CURVE_DOUBLE_SUM(a,b,c,d)                                                                                                                                                              \
+  PRINT_AXIS                                                                                                                                                                                         \
+  fprintf(histo_corr_file, ", [");                                                                                                                                                                   \
+  for (i = 0; i < long_history_size - 1; ++i)                                                                                                                                                        \
+    fprintf(histo_corr_file, "%Lf ", (histo_corr[i].data[a][b] + histo_corr[i].data[a][0b00] + histo_corr[i].data[0b00][b] + histo_corr[i].data[0b00][0b00]) / ((long double) c + u64_stats[0][0])); \
+  i = long_history_size - 1;                                                                                                                                                                         \
+  fprintf(histo_corr_file, "%Lf]", (histo_corr[i].data[a][b] + histo_corr[i].data[a][0b00] + histo_corr[i].data[0b00][b] + histo_corr[i].data[0b00][0b00]) / ((long double) c + u64_stats[0][0]));   \
+  PRINT_PLOT_LINE_INFO(d)
+//"
+
+#define PRINT_PLOT_END(a)                       \
+  fprintf(histo_corr_file, ");\n");             \
+  fprintf(histo_corr_file, "legend(%s);\n", a); \
+  fprintf(histo_corr_file, "\n");
+
+  PRINT_PLOT_START("green/blue: 01|01; magenta/red: 10|10", "Autocorelation (First order loss)")
+  PRINT_REFERENCE(u64_stats[0][1] / ((long double)stats->total), "b")
   PRINT_SEP
-  PRINT_CURVE(0b00,0b01, u64_stats[0][0])
+  PRINT_CURVE(0b01, 0b01, u64_stats[0][1], "g")
   PRINT_SEP
-  PRINT_CURVE(0b00,0b10, u64_stats[0][0])
-  PRINT_PLOT_END
-  PRINT_PLOT_START
-  PRINT_CURVE(0b01,0b00, u64_stats[0][1])
+  PRINT_REFERENCE(u64_stats[1][0] / ((long double)stats->total), "r")
   PRINT_SEP
-  PRINT_CURVE(0b01,0b01, u64_stats[0][1])
+  PRINT_CURVE(0b10, 0b10, u64_stats[1][0], "m")
+  PRINT_PLOT_END("'ref 01','01|01','ref 10','10|10'")
+
+  PRINT_PLOT_START("red/black: 00|00", "Autocorelation (Second order loss)")
+  PRINT_REFERENCE(u64_stats[0][0] / ((long double)stats->total), "k")
   PRINT_SEP
-  PRINT_CURVE(0b01,0b10, u64_stats[0][1])
-  PRINT_PLOT_END
-  PRINT_PLOT_START
-  PRINT_CURVE(0b10,0b00, u64_stats[1][0])
+  PRINT_CURVE(0b00,0b00, u64_stats[0][0], "r")
+  PRINT_PLOT_END("'ref 00','00|00'");
+
+  PRINT_PLOT_START("green/blue: 10|01; magenta/red: 01|10", "Correlation (First order loss)")
+  PRINT_REFERENCE(u64_stats[1][0] / ((long double)stats->total), "b")
   PRINT_SEP
-  PRINT_CURVE(0b10,0b01, u64_stats[1][0])
+  PRINT_CURVE(0b01, 0b10, u64_stats[0][1], "g")
   PRINT_SEP
-  PRINT_CURVE(0b10,0b10, u64_stats[1][0])
-  PRINT_PLOT_END
+  PRINT_REFERENCE(u64_stats[0][1] / ((long double)stats->total), "r")
+  PRINT_SEP
+  PRINT_CURVE(0b10, 0b01, u64_stats[1][0], "m")
+  PRINT_PLOT_END("'ref 10','10|01','ref 01','01|10'")
+
+  PRINT_PLOT_START("green/black: 00|01; red/black: 00|10", "Corelation (Second order loss)")
+  PRINT_REFERENCE(u64_stats[0][0] / ((long double)stats->total), "k")
+  PRINT_SEP
+  PRINT_CURVE(0b01, 0b00, u64_stats[0][1], "g")
+  PRINT_SEP
+  PRINT_CURVE(0b10, 0b00, u64_stats[1][0], "r")
+  PRINT_PLOT_END("'ref 00','00|01','00|10'")
+
+  PRINT_PLOT_START("green/blue: 0.|0.; magenta/red: .0|.0", "Autocorelation (Independant loss)")
+  PRINT_REFERENCE((u64_stats[0][1] + u64_stats[0][0]) / ((long double)stats->total), "b")
+  PRINT_SEP
+  PRINT_CURVE_DOUBLE_SUM(0b01, 0b01, u64_stats[0][1], "g")
+  PRINT_SEP
+  PRINT_REFERENCE((u64_stats[1][0] + u64_stats[0][0]) / ((long double)stats->total), "r")
+  PRINT_SEP
+  PRINT_CURVE_DOUBLE_SUM(0b10, 0b10, u64_stats[1][0], "m")
+  PRINT_PLOT_END("'ref 0.','0.|0.','ref .0','.0|.0'")
 
 #undef PRINT_PLOT_END
+#undef PRINT_CURVE_DOUBLE_SUM
 #undef PRINT_CURVE
+#undef PRINT_REFERENCE
 #undef PRINT_PLOT_START
+#undef PRINT_AXIS
 #undef PRINT_SEP
 }
 
