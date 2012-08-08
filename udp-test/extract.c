@@ -60,6 +60,8 @@ struct input_p
   bool                origin;
 };
 
+#define DELAY_BEFORE_RESYNCHRONISATION  15000
+
 struct state
 {
   struct input_p  input;
@@ -71,6 +73,8 @@ struct state
   int8_t          signal_old;
   uint64_t        desynchronization_drop_internal;
   uint64_t        desynchronization_drop_external;
+  uint64_t        resynchronisation_counter;
+  double          resynchronisation_min;
 };
 
 struct first_run
@@ -135,7 +139,7 @@ read_input(struct state *in_state)
   char *buffer, *next;
   struct in6_addr ip;
   int tmp;
-  double temp_ts;
+  double temp_ts, temp_diff;
 
   buffer = zread_line(&in_state->input.input, &len);
   if (buffer == NULL) {
@@ -266,30 +270,45 @@ read_input(struct state *in_state)
   }
 
   if (in_state->timestamp_old != 0) {
-     temp_ts = in_state->timestamp_old + interval * (double)(in_state->count_new - in_state->count_old);
-     if (temp_ts - in_state->timestamp > secure_interval) {
-        /* We are correcting this kind of drift at each step, thus this should not happen */
-        printf("Algorithmic error: a packet arrived too early\n");
-        goto exit;
-     } else if (in_state->timestamp - temp_ts > interval) {
-       PRINTF("File %s, ", in_state->input.filename);
-       PRINTF("packet %"PRIu64" dropped because outside its window (%lf VS %lf)\n", in_state->count_new, in_state->timestamp, temp_ts)
-       in_state->signal_new = in_state->signal_old;
-       in_state->count_new = in_state->count_old;
-       ++in_state->desynchronization_drop_internal;
-       return 0;
-     } else {
-       if (in_state->timestamp < temp_ts) {
-          in_state->timestamp_old = in_state->timestamp;
-       } else {
-         in_state->timestamp_old = temp_ts;
-       }
+    temp_ts = in_state->timestamp_old + interval * (double)(in_state->count_new - in_state->count_old);
+    if (temp_ts - in_state->timestamp > secure_interval) {
+       /* We are correcting this kind of drift at each step, thus this should not happen */
+       printf("Algorithmic error: a packet arrived too early\n");
+       goto exit;
+    } else if (in_state->timestamp - temp_ts > interval) {
+      PRINTF("File %s, ", in_state->input.filename);
+      PRINTF("packet %"PRIu64" dropped because outside its window (%lf VS %lf)\n", in_state->count_new, in_state->timestamp, temp_ts)
+      in_state->signal_new = in_state->signal_old;
+      in_state->count_new = in_state->count_old;
+      ++in_state->desynchronization_drop_internal;
+      return 0;
+    } else {
+      if (in_state->timestamp <= temp_ts) {
+        PRINTF("Resynchronisation @%"PRIu64": %f\n", in_state->count_new,  in_state->timestamp - temp_ts)
+        in_state->timestamp_old = in_state->timestamp;
+        in_state->resynchronisation_counter = 0;
+        in_state->resynchronisation_min = interval;
+      } else {
+        ++in_state->resynchronisation_counter;
+        temp_diff = in_state->timestamp - temp_ts;
+        if (temp_diff < in_state->resynchronisation_min) {
+          in_state->resynchronisation_min = temp_diff;
+        }
+        if (in_state->resynchronisation_counter > DELAY_BEFORE_RESYNCHRONISATION) {
+          PRINTF("Resynchronisation @%"PRIu64": +%f\n", in_state->count_new,  in_state->resynchronisation_min);
+          in_state->timestamp_old = temp_ts + in_state->resynchronisation_min;
+          in_state->resynchronisation_counter = 0;
+          in_state->resynchronisation_min = interval;
+        } else {
+          in_state->timestamp_old = temp_ts;
+        }
+      }
     }
   }
 
   return 1;
 exit:
-  printf("Error parsing input file %s (last count : %"PRIu64"\n", in_state->input.filename, in_state->count_new);
+  printf("Error parsing input file %s (last count : %"PRIu64"\n)", in_state->input.filename, in_state->count_new);
   exit(-3);
 }
 
