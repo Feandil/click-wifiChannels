@@ -73,6 +73,7 @@ struct state
   int8_t          signal_old;
   uint64_t        desynchronization_drop_internal;
   uint64_t        desynchronization_drop_external;
+  uint64_t        desynchronization_resync;
   uint64_t        resynchronisation_counter;
   double          resynchronisation_min;
 };
@@ -109,7 +110,7 @@ struct state *states_for_interrupt;
 /* Global cache */
 #define SOURCES 2
 
-uint64_t sync_count_diff;
+int64_t sync_count_diff;
 double   interval;
 double   secure_interval;
 
@@ -273,7 +274,7 @@ read_input(struct state *in_state)
     temp_ts = in_state->timestamp_old + interval * (double)(in_state->count_new - in_state->count_old);
     if (temp_ts - in_state->timestamp > secure_interval) {
        /* We are correcting this kind of drift at each step, thus this should not happen */
-       printf("Algorithmic error: a packet arrived too early\n");
+       printf("Algorithmic error: a packet arrived too early (%lf VS %lf : %lf VS %lf)\n", in_state->timestamp, temp_ts, temp_ts - in_state->timestamp, secure_interval);
        goto exit;
     } else if (in_state->timestamp - temp_ts > interval) {
       PRINTF("File %s, ", in_state->input.filename);
@@ -284,10 +285,12 @@ read_input(struct state *in_state)
       return 0;
     } else {
       if (in_state->timestamp <= temp_ts) {
-        PRINTF("Resynchronisation @%"PRIu64": %f\n", in_state->count_new,  in_state->timestamp - temp_ts)
+        PRINTF("File %s, ", in_state->input.filename);
+        PRINTF("resynchronisation @%"PRIu64": %f\n", in_state->count_new,  in_state->timestamp - temp_ts)
         in_state->timestamp_old = in_state->timestamp;
         in_state->resynchronisation_counter = 0;
         in_state->resynchronisation_min = interval;
+        return 2;
       } else {
         ++in_state->resynchronisation_counter;
         temp_diff = in_state->timestamp - temp_ts;
@@ -295,10 +298,12 @@ read_input(struct state *in_state)
           in_state->resynchronisation_min = temp_diff;
         }
         if (in_state->resynchronisation_counter > DELAY_BEFORE_RESYNCHRONISATION) {
-          PRINTF("Resynchronisation @%"PRIu64": +%f\n", in_state->count_new,  in_state->resynchronisation_min);
+          PRINTF("File %s, ", in_state->input.filename);
+          PRINTF("resynchronisation @%"PRIu64": +%f\n", in_state->count_new,  in_state->resynchronisation_min);
           in_state->timestamp_old = temp_ts + in_state->resynchronisation_min;
           in_state->resynchronisation_counter = 0;
           in_state->resynchronisation_min = interval;
+          return 3;
         } else {
           in_state->timestamp_old = temp_ts;
         }
@@ -308,16 +313,74 @@ read_input(struct state *in_state)
 
   return 1;
 exit:
-  printf("Error parsing input file %s (last count : %"PRIu64"\n)", in_state->input.filename, in_state->count_new);
+  printf("Error parsing input file %s (last count : %"PRIu64")\n", in_state->input.filename, in_state->count_new);
   exit(-3);
 }
 
 static ssize_t
-next_input(struct state *inc)
+next_input(struct state *inc, struct state *states)
 {
   ssize_t tmp;
+  double other_ts;
+
   do {
     tmp = read_input(inc);
+    if (tmp > 1) {
+      if (inc == states) {
+        other_ts = states[1].timestamp_old + interval * (double) (((int64_t) (states[0].count_new - states[1].count_new)) - sync_count_diff);
+      } else {
+        assert(inc == states + 1);
+        other_ts = states[0].timestamp_old + interval * (double) (((int64_t) (states[1].count_new - states[0].count_new)) + sync_count_diff);
+      }
+      switch(tmp) {
+        case 2:
+          /* Time went back */
+          if (inc->timestamp_old < other_ts - 1.01 * secure_interval) {
+            assert(inc->timestamp_old + interval < other_ts + 1.01 * secure_interval);
+            if (inc == states) {
+              ++sync_count_diff;
+            } else {
+              --sync_count_diff;
+            }
+            /* Make one packet disappear */
+            PRINTF("Resynchronisation: %s was too early, removing a packet", inc->input.filename)
+            if (inc->count_old == inc->count_new - 1) {
+              inc->signal_new = inc->signal_old;
+              ++inc->desynchronization_resync;
+              tmp = 0;
+              PRINTF(" that triggered a new call\n")
+            } else {
+              ++inc->count_old;
+              PRINTF("\n")
+            }
+          }
+          break;
+        case 3:
+          /* Time went forward */
+          if (inc->timestamp_old > other_ts + 1.01 * secure_interval) {
+            assert(inc->timestamp_old - interval > other_ts - 1.01 * secure_interval);
+            if (inc == states) {
+              --sync_count_diff;
+              ++inc;
+            } else {
+              ++sync_count_diff;
+              --inc;
+            }
+            /* Make one packet disappear */
+            PRINTF("Resynchronisation: %s was too late, removing a packet of the other stream", inc->input.filename)
+            if (inc->count_old == inc->count_new - 1) {
+              inc->signal_new = inc->signal_old;
+              ++inc->desynchronization_resync;
+              tmp = 0;
+              PRINTF(" that triggered a new call\n")
+            } else {
+              ++inc->count_old;
+              PRINTF("\n")
+            }
+          }
+          break;
+      }
+    }
   } while (tmp == 0);
   return tmp;
 }
@@ -332,12 +395,12 @@ synchronize_input(struct state* states)
 # error "This function was written only for 2 sources"
 #endif
 
-  tmp = next_input(states);
+  tmp = next_input(states, NULL);
   if (tmp < 0) {
     printf("End of file before any input for input file 0 (0-1) ...\n");
     exit(-4);
   }
-  tmp = next_input(states + 1);
+  tmp = next_input(states + 1, NULL);
   if (tmp < 0) {
     printf("End of file before any input for input file 1 (0-1)...\n");
     exit(-4);
@@ -345,13 +408,13 @@ synchronize_input(struct state* states)
   while (1) {
     ts = states[0].timestamp - states[1].timestamp;
     if (ts > secure_interval) {
-      tmp = next_input(states + 1);
+      tmp = next_input(states + 1, NULL);
       if (tmp < 0) {
         printf("End of file before synchronisation for input file 1 (0-1)...\n");
         exit(-4);
       }
     } else if (ts < -secure_interval) {
-      tmp = next_input(states);
+      tmp = next_input(states, NULL);
       if (tmp < 0) {
         printf("End of file before synchronisation for input file 0 (0-1)...\n");
         exit(-4);
@@ -360,7 +423,7 @@ synchronize_input(struct state* states)
       break;
     }
   }
-  sync_count_diff = states[0].count_new - states[1].count_new;
+  sync_count_diff = (int64_t) (states[0].count_new - states[1].count_new);
   states[0].count_old = states[0].count_new;
   states[0].timestamp_old = states[0].timestamp;
   states[1].count_old = states[1].count_new;
@@ -368,14 +431,14 @@ synchronize_input(struct state* states)
 }
 
 static int
-next_line_or_file(struct state *in_state)
+next_line_or_file(struct state *in_state, struct state *states)
 {
   ssize_t tmp;
   size_t len;
   int ret;
   FILE *src;
 
-  tmp = next_input(in_state);
+  tmp = next_input(in_state, states);
   if (tmp != -1) {
     return tmp;
   }
@@ -408,7 +471,7 @@ next_line_or_file(struct state *in_state)
     return ret;
   }
   PRINTF("Success\n");
-  return next_line_or_file(in_state);
+  return next_line_or_file(in_state, states);
 }
 
 inline static void
@@ -476,7 +539,7 @@ temporal_dependence(uint8_t new_state)
   }
 
 #define READ_LINE(pos)                                                       \
-  tmp = next_line_or_file(states + pos);                                     \
+  tmp = next_line_or_file(states + pos, states);                             \
   if (tmp < 0) {                                                             \
     return tmp;                                                              \
   }                                                                          \
@@ -501,26 +564,26 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
   assert(states[1].count_new >= states[1].count_old);
   age[1] = states[1].count_new - states[1].count_old;
 
-  assert((states[0].count_old - states[1].count_old) == sync_count_diff);
+  assert(((int64_t)(states[0].count_old - states[1].count_old)) == sync_count_diff);
   if (age[0] == age[1]) {
     ts = states[0].timestamp - states[1].timestamp;
     if (fabs(ts) > interval) {
-      if (fabs(states[0].timestamp_old - states[1].timestamp) > interval) {
+      if (states[0].timestamp_old - states[1].timestamp > secure_interval || states[1].timestamp - states[0].timestamp_old > interval) {
         ++states[1].desynchronization_drop_external;
         PRINTF("File %s, ", states[1].input.filename);
-        PRINTF("packet %"PRIu64" dropped because outside the global window (%lf VS %lf)\n", states[1].count_new, states[1].timestamp, states[0].timestamp_old);
+        PRINTF("packet %"PRIu64" dropped because outside the global window (%lf (ref %lf) VS ref %lf)\n", states[1].count_new, states[1].timestamp, states[1].timestamp_old, states[0].timestamp_old);
         states[1].timestamp_old -= interval * (double)(states[1].count_new - states[1].count_old);
         states[1].signal_new = states[1].signal_old;
         states[1].count_new = states[1].count_old;
-        return next_line_or_file(states + 1);
-      } else if (fabs(states[1].timestamp_old - states[0].timestamp) > interval) {
+        return next_line_or_file(states + 1, states);
+      } else if (states[1].timestamp_old - states[0].timestamp > secure_interval || states[0].timestamp - states[1].timestamp_old > interval) {
         ++states[0].desynchronization_drop_external;
         PRINTF("File %s, ", states[0].input.filename);
-        PRINTF("packet %"PRIu64" dropped because outside the global window (%lf VS %lf)\n", states[0].count_new, states[0].timestamp, states[1].timestamp_old);
+        PRINTF("packet %"PRIu64" dropped because outside the global window (%lf (ref %lf) VS ref %lf)\n", states[0].count_new, states[0].timestamp, states[0].timestamp_old, states[1].timestamp_old);
         states[0].timestamp_old -= interval * (double)(states[0].count_new - states[0].count_old);
         states[0].signal_new = states[0].signal_old;
         states[0].count_new = states[0].count_old;
-        return next_line_or_file(states);
+        return next_line_or_file(states, states);
       } else {
         printf("Desynchronisation between %"PRIu64" and %"PRIu64"\n", states[0].count_new, states[1].count_new);
         printf("current: %lf - %lf -> %lf (VS %lf)\n", states[0].timestamp, states[1].timestamp, fabs(ts), interval);
@@ -617,7 +680,7 @@ second_pass(FILE* out, bool print, struct second_run *data, struct state *states
   assert(states[1].count_new >= states[1].count_old);
   age[1] = states[1].count_new - states[1].count_old;
 
-  assert((states[0].count_old - states[1].count_old) == sync_count_diff);
+  assert(((int64_t)(states[0].count_old - states[1].count_old)) == sync_count_diff);
   if (age[0] == age[1]) {
     ts = states[0].timestamp - states[1].timestamp;
     if (fabs(ts) > secure_interval) {
@@ -632,11 +695,11 @@ second_pass(FILE* out, bool print, struct second_run *data, struct state *states
       }
 
     }
-    tmp = next_line_or_file(states);
+    tmp = next_line_or_file(states, states);
     if (tmp < 0) {
       return tmp;
     }
-    tmp = next_line_or_file(states + 1);
+    tmp = next_line_or_file(states + 1, states);
     return tmp;
   } else if (age[0] < age[1]) {
     for(i = age[0]; i > 1; --i) {
@@ -644,7 +707,7 @@ second_pass(FILE* out, bool print, struct second_run *data, struct state *states
     }
 
     states[1].count_old += age[0];
-    tmp = next_line_or_file(states);
+    tmp = next_line_or_file(states, states);
     return tmp;
   } else /* age[0] > age[1] */ {
     for(i = age[1]; i > 1; --i) {
@@ -652,7 +715,7 @@ second_pass(FILE* out, bool print, struct second_run *data, struct state *states
     }
 
     states[0].count_old += age[1];
-    tmp = next_line_or_file(states + 1);
+    tmp = next_line_or_file(states + 1, states);
     return tmp;
   }
 }
@@ -701,6 +764,7 @@ print_desynchronisation_stats(struct state *states)
   printf("Desynchronisation drops :\n");
   printf(" Internals: %"PRIu64" and %"PRIu64"\n", states[0].desynchronization_drop_internal, states[1].desynchronization_drop_internal);
   printf(" Externals: %"PRIu64" and %"PRIu64"\n", states[0].desynchronization_drop_external, states[1].desynchronization_drop_external);
+  printf("Resynchronisations:  %"PRIu64" and %"PRIu64"\n", states[0].desynchronization_resync, states[1].desynchronization_resync);
 }
 
 static void
