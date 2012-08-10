@@ -29,6 +29,7 @@ struct control {
 struct udp_io_t {
   int fd;
   int packet_len;
+  int train_size;
   struct sockaddr_in6 addr;
   uint64_t count;
   char buf[BUF_SIZE];
@@ -48,6 +49,7 @@ static void event_end(struct ev_loop *loop, struct ev_timer *w, int revents) {
 
 static void event_cb(struct ev_loop *loop, ev_periodic *periodic, int revents) {
   ssize_t len, sent_len;
+  int i;
 
   len = snprintf(buffer->buf, BUF_SIZE, ",%f,%"PRIu64"|", ev_time(), buffer->count);
   assert(len > 0);
@@ -56,18 +58,20 @@ static void event_cb(struct ev_loop *loop, ev_periodic *periodic, int revents) {
   } else {
     --len;
   }
-  /* The previous checks and modifications assures that len >= 0 */
-  sent_len = sendto(buffer->fd, buffer->buf, (size_t)len, 0, (struct sockaddr *)&buffer->addr, sizeof(struct sockaddr_in6));
-  if (sent_len == -1) {
-    PERROR("sendto")
-    return;
+  for (i = 0; i < buffer->train_size; ++i) {
+    /* The previous checks and modifications assures that len >= 0 */
+    sent_len = sendto(buffer->fd, buffer->buf, (size_t)len, 0, (struct sockaddr *)&buffer->addr, sizeof(struct sockaddr_in6));
+    if (sent_len == -1) {
+      PERROR("sendto")
+      return;
+    }
+    assert(sent_len == len);
   }
-  assert(sent_len == len);
   ++buffer->count;
 }
 
 static struct ev_periodic*
-init(in_port_t port, struct in6_addr *addr, double offset, double delay, const uint64_t count, const int size, const char* interface, uint32_t scope)
+init(in_port_t port, struct in6_addr *addr, double offset, double delay, const uint64_t count, const int size, const char* interface, uint32_t scope, int train_size)
 {
   struct ev_periodic* event;
 
@@ -102,6 +106,7 @@ init(in_port_t port, struct in6_addr *addr, double offset, double delay, const u
   buffer->addr.sin6_family = AF_INET6;
   buffer->addr.sin6_port   = htons(port);
   memcpy(&buffer->addr.sin6_addr, addr, sizeof(struct in6_addr));
+  buffer->train_size = train_size;
 
   /* Init event */
   event = (struct ev_periodic*) malloc(sizeof(struct ev_periodic));
@@ -130,6 +135,7 @@ static void down(int sig)
 #define DEFAULT_TIME_MILLISECOND 20
 #define DEFAULT_COUNT 0
 #define DEFAULT_SIZE 900
+#define DEFAULT_TRAIN 1
 
 static void usage(int err, char *name)
 {
@@ -139,11 +145,12 @@ static void usage(int err, char *name)
   printf(" -h, --help           Print this ...\n");
   printf(" -d, --dest   <addr>  Specify the destination address (default: %s)\n", DEFAULT_ADDRESS);
   printf(" -p, --port   <port>  Specify the destination port (default: %"PRIu16")\n", DEFAULT_PORT);
-  printf(" -s, --sec    <sec>   Specify the interval in second between two packets (default: %i)\n", DEFAULT_TIME_SECOND);
-  printf(" -m, --msec   <msec>  Specify the interval in millisecond between two packets (default: %i)\n", DEFAULT_TIME_MILLISECOND);
+  printf(" -s, --sec    <sec>   Specify the interval in second between two trains of packets (default: %i)\n", DEFAULT_TIME_SECOND);
+  printf(" -m, --msec   <msec>  Specify the interval in millisecond between two trains of packets (default: %i)\n", DEFAULT_TIME_MILLISECOND);
   printf(" -c, --count  <uint>  Specify the starting count of the outgoing packets (default: %i)\n", DEFAULT_COUNT);
   printf(" -l, --size   <size>  Specify the size of outgoing packets (default: %i)\n", DEFAULT_SIZE);
   printf(" -i, --bind   <name>  Specify the interface to bind one (default: no bind)\n");
+  printf(" -t, --train  <size>  Send trains of <size> packets every sending event (default: %i)\n", DEFAULT_TRAIN);
   exit(err);
 }
 
@@ -171,8 +178,9 @@ int main(int argc, char *argv[]) {
   uint64_t count = DEFAULT_COUNT;
   int size = DEFAULT_SIZE;
   uint32_t scope = 0;
+  int trains = DEFAULT_TRAIN;
 
-  while((opt = getopt_long(argc, argv, "hd:p:s:m:c:l:i:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "hd:p:s:m:c:l:i:t:", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0, argv[0]);
@@ -212,6 +220,12 @@ int main(int argc, char *argv[]) {
         break;
       case 'i':
         interface = optarg;
+        break;
+      case 't':
+        if (trains != DEFAULT_TRAIN) {
+          usage(1, argv[0]);
+        }
+        sscanf(optarg, "%i", &trains);
         break;
       default:
         usage(1, argv[0]);
@@ -254,7 +268,7 @@ int main(int argc, char *argv[]) {
   }
   ev_init(event_killer, event_end);
 
-  send_mess = init(port, &addr, 0, delay.tv_sec + (((double) delay.tv_usec) / 1000), count, size, interface, scope);
+  send_mess = init(port, &addr, 0, delay.tv_sec + (((double) delay.tv_usec) / 1000), count, size, interface, scope, trains);
   if (send_mess == NULL) {
     PRINTF("Unable to create sending event\n")
     return -2;
