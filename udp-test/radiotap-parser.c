@@ -28,16 +28,24 @@
 
 #include "radiotap-parser.h"
 
+/*
+ * Standard GNU "unlikely"
+ */
 #ifndef unlikely
 # if defined(__GNUC__) && (__GNUC__ > 2) && defined(__OPTIMIZE__)
 #  define unlikely(x)    __builtin_expect((x), 0)
 # else
 #  define unlikely(x)    (x)
 # endif
-#else
-# define unlikely(x) (x)
 #endif
 
+/**
+ * Initialize radiotap header parsing.
+ * @param iterator        Zeroed memory for storing internal information.
+ * @param radiotap_header Input data memory zone pointer.
+ * @param len             Input data memory zone size.
+ * @return                Error code: 0 if OK, -EINVAL in case of failure.
+ */
 int
 ieee80211_radiotap_iterator_init(struct ieee80211_radiotap_iterator *iterator, struct ieee80211_radiotap_header *radiotap_header, ssize_t len)
 {
@@ -64,7 +72,12 @@ ieee80211_radiotap_iterator_init(struct ieee80211_radiotap_iterator *iterator, s
   return 0;
 }
 
-
+/**
+ * Fetch next content of the radiotap header with limited exploration
+ * @param iterator  Internal information, need to be initialized with ieee80211_radiotap_iterator_init
+ * @param max_index Index at which the exploration should stop
+ * @return If >= 0, index of the argument present at iterator->arg; if -1, EOF; if -EINVAL, failure
+ */
 int
 ieee80211_radiotap_iterator_next(struct ieee80211_radiotap_iterator *iterator, uint8_t max_index)
 {
