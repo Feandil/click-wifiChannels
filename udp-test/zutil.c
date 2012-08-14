@@ -62,6 +62,11 @@ zinit_write(struct zutil_write* buffer, FILE *out, const int encode)
 {
   int ret;
 
+  /* File verification */
+  if (out == NULL || ferror(out)) {
+    PRINTF("ZUTIL ERROR, output file error\n")
+    return -1;
+  }
   /* The structure is supposed to be zeroed */
   buffer->output = out;
   buffer->strm.zalloc = Z_NULL;
