@@ -162,7 +162,6 @@ send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
   ssize_t sent_len;
   struct udp_io_t *buffer;
   struct timespec stamp;
-  struct timespec tmp;
   struct in_air   *output;
 
   buffer = (struct udp_io_t*) periodic->data;
@@ -175,12 +174,13 @@ send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
   for (pos = 0; pos < LINE_NB; ++pos) {
     if (*inc[pos].data.ip.s6_addr32 != 0) {
       memcpy(output, &inc[pos].data, sizeof(struct in_air));
-      tmp.tv_nsec = output->stamp.tv_nsec;
-      if (stamp.tv_nsec > tmp.tv_nsec) {
-        output->stamp.tv_nsec = stamp.tv_nsec - tmp.tv_nsec;
+      /* Remove a carry if we need to */
+      if (stamp.tv_nsec > output->stamp.tv_nsec) {
+        output->stamp.tv_nsec = stamp.tv_nsec - output->stamp.tv_nsec;
         output->stamp.tv_sec  = stamp.tv_sec - output->stamp.tv_sec;
       } else {
-        output->stamp.tv_nsec = 1000000000 - tmp.tv_nsec + stamp.tv_nsec;
+        output->stamp.tv_nsec = 1000000000 - output->stamp.tv_nsec + stamp.tv_nsec;
+        assert(stamp.tv_sec >= output->stamp.tv_sec - 1);
         output->stamp.tv_sec  = stamp.tv_sec - output->stamp.tv_sec - 1;
       }
       len += sizeof(struct in_air);
