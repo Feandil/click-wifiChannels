@@ -132,7 +132,12 @@ ncurses_stop(void)
 {
   int pos;
 
-  /* Free windows */
+  /* Free the title if it was created */
+  if (title != NULL) {
+    delwin(title);
+  }
+
+  /* Free in and out windows */
   for (pos = 0; pos < LINE_NB; ++pos) {
     delwin(inc[pos].output.ip);
     delwin(inc[pos].output.db);
