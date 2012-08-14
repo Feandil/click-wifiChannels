@@ -208,12 +208,11 @@ send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, cons
   struct udp_io_t *buffer;
 
   /* Create buffer */
-  buffer = (struct udp_io_t *)malloc(sizeof(struct udp_io_t));
+  buffer = calloc(1, sizeof(struct udp_io_t));
   if (buffer == NULL) {
     PRINTF("Unable to use malloc\n")
     return NULL;
   }
-  memset(buffer, 0, sizeof(struct udp_io_t));
 
   /* Create socket */
   if ((buffer->fd = socket(AF_INET6, SOCK_DGRAM, 0)) < 0) {
@@ -237,7 +236,7 @@ send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, cons
   memcpy(&buffer->addr.sin6_addr, addr, sizeof(struct in6_addr));
 
   /* Init event */
-  event = (struct ev_periodic*) malloc(sizeof(struct ev_periodic));
+  event = calloc(1, sizeof(struct ev_periodic));
   if (event == NULL) {
     PRINTF("Unable to use malloc\n")
     close(buffer->fd);
@@ -428,7 +427,7 @@ listen_on(in_port_t port, const char* mon_interface, const uint32_t phy_interfac
   strncpy(mon_name, mon_interface, IF_NAMESIZE);
 
   /* Init event */
-  event = (struct ev_io*) malloc(sizeof(struct ev_io));
+  event = calloc(1,sizeof(struct ev_io));
   if (event == NULL) {
     PRINTF("Unable to use malloc\n")
     return NULL;
@@ -584,7 +583,7 @@ int main(int argc, char *argv[]) {
   memset(inc, 0, sizeof(struct line) * LINE_NB);
 
   event_loop = ev_default_loop (EVFLAG_AUTO);
-  if((event_killer = (ev_timer*) malloc(sizeof(ev_timer))) == NULL) {
+  if((event_killer = calloc(1, sizeof(ev_timer))) == NULL) {
     PRINTF("Malloc\n")
     return -1;
   }
