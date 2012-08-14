@@ -56,7 +56,7 @@ extract: extract.o zutil.o
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(MATH_LIBS) -o $@
 
 test-zcat: zutil.c
-	$(COMPILE.c) -DTEST $(OUTPUT_OPTION)  $< -o $@.o
+	$(COMPILE.c) -Wno-cast-qual -DTEST $(OUTPUT_OPTION)  $< -o $@.o
 	$(LINK.c) $@.o $(LOADLIBES) $(LDLIBS) -o $@
 
 clean:
