@@ -45,7 +45,7 @@
 /**
  * Description of a socket.
  */
-struct udp_io_t {
+struct eval_buffer {
   int fd;                   //< The unix file descriptor.
   struct sockaddr_in6 addr; //< The IPv6 address we are listenning on (manual bind()).
   char buf[BUF_SIZE];       //< Buffer for the incomming packet.
@@ -247,12 +247,12 @@ send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
   int ret, pos;
   size_t len;
   ssize_t sent_len;
-  struct udp_io_t *buffer;
+  struct eval_buffer *buffer;
   struct timespec stamp;
   struct in_air   *output;
 
   /* Retreive the socket structure from the event */
-  buffer = (struct udp_io_t*) periodic->data;
+  buffer = (struct eval_buffer*) periodic->data;
   assert(buffer != NULL);
 
   /* Retreive the current clock */
@@ -311,10 +311,10 @@ static struct ev_periodic*
 send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, const char* interface, uint32_t scope)
 {
   struct ev_periodic* event;
-  struct udp_io_t *buffer;
+  struct eval_buffer *buffer;
 
   /* Create buffer */
-  buffer = calloc(1, sizeof(struct udp_io_t));
+  buffer = calloc(1, sizeof(struct eval_buffer));
   if (buffer == NULL) {
     PRINTF("Unable to use malloc\n")
     return NULL;

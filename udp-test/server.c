@@ -24,7 +24,7 @@
 #define HDR_SIZE        16
 #define TIME_SIZE      128
 
-struct udp_io_t {
+struct server_buffer {
   struct mon_io_t mon;
   char mon_name[IF_NAMESIZE];
   char addr_s[ADDR_BUF_SIZE];
@@ -64,11 +64,11 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
   const char *addr;
   const char *end;
   int tmp;
-  struct udp_io_t* in;
+  struct server_buffer* in;
 
 
   assert(arg != NULL);
-  in = (struct udp_io_t*) arg;
+  in = (struct server_buffer*) arg;
 
   addr = inet_ntop(AF_INET6, from, in->addr_s, ADDR_BUF_SIZE);
   assert(addr != NULL);
@@ -98,9 +98,9 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
 static void
 read_cb(struct ev_loop *loop, ev_io *io, int revents)
 {
-  struct udp_io_t* in;
+  struct server_buffer* in;
 
-  in = (struct udp_io_t*) io->data;
+  in = (struct server_buffer*) io->data;
   assert(in != NULL);
   read_and_parse_monitor(&in->mon, consume_data, in);
 }
@@ -111,16 +111,16 @@ listen_on(in_port_t port, const char* mon_interface, const uint32_t phy_interfac
 {
   int tmp;
   struct ev_io* event;
-  struct udp_io_t* buffer;
+  struct server_buffer* buffer;
   struct mon_io_t* mon;
 
   /* Create buffer */
-  buffer = (struct udp_io_t *)malloc(sizeof(struct udp_io_t));
+  buffer = (struct server_buffer *)malloc(sizeof(struct server_buffer));
   if (buffer == NULL) {
     PRINTF("Unable to use malloc\n")
     return NULL;
   }
-  memset(buffer, 0, sizeof(struct udp_io_t));
+  memset(buffer, 0, sizeof(struct server_buffer));
 
   mon = monitor_listen_on(&buffer->mon, port, mon_interface, phy_interface, wan_interface, multicast, 1);
   if (mon == NULL) {
@@ -195,12 +195,12 @@ drop_on(in_port_t port, struct ipv6_mreq *mreq)
 static void
 reload_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
 {
-  struct udp_io_t* in;
+  struct server_buffer* in;
   size_t len;
   FILE* dest;
   int tmp;
 
-  in = (struct udp_io_t*) periodic->data;
+  in = (struct server_buffer*) periodic->data;
   assert(in != NULL);
   if(in->filename == NULL) {
     fprintf(stderr, "Unable to change the name of the output file: no filename specified");
@@ -460,7 +460,7 @@ int main(int argc, char *argv[]) {
 
   ev_loop(event_loop, 0);
 
-  struct udp_io_t* arg;
+  struct server_buffer* arg;
 
   arg = glisten->data;
   zend_data(&arg->zdata);

@@ -26,7 +26,7 @@ struct control {
   char control[CONTROL_SIZE];
 };
 
-struct udp_io_t {
+struct client_buffer {
   int fd;
   int packet_len;
   int train_size;
@@ -35,7 +35,7 @@ struct udp_io_t {
   char buf[BUF_SIZE];
 };
 
-struct udp_io_t* buffer;
+struct client_buffer* buffer;
 
 /* Event loop */
 struct ev_loop      *event_loop;
@@ -77,12 +77,12 @@ init(in_port_t port, struct in6_addr *addr, double offset, double delay, const u
 
 
   /* Create buffer */
-  buffer = (struct udp_io_t *)malloc(sizeof(struct udp_io_t));
+  buffer = (struct client_buffer *)malloc(sizeof(struct client_buffer));
   if (buffer == NULL) {
     PRINTF("Unable to use malloc\n")
     return NULL;
   }
-  memset(buffer, 0, sizeof(struct udp_io_t));
+  memset(buffer, 0, sizeof(struct client_buffer));
 
   /* Create socket */
   if ((buffer->fd = socket(AF_INET6, SOCK_DGRAM, 0)) < 0) {
