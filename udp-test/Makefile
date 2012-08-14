@@ -66,6 +66,10 @@ clean:
 	-rm transfo
 	-rm evallink
 	-rm test-zcat
+	-rm -r html
 
 evallink: evallink.o $(MONITOR_DEP)
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(EV_LIBS) $(RT_LIBS) $(NL_LIBS) $(NCURSES_LIBS) -o $@
+
+doc:
+	@doxygen
