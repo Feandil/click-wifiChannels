@@ -39,46 +39,115 @@
 #define TITLE_COL   22
 #define TITLE_LEN   80
 
+
+// Internal structure definition
+
+/**
+ * Description of a socket.
+ */
 struct udp_io_t {
-  int fd;
-  struct sockaddr_in6 addr;
-  char buf[BUF_SIZE];
+  int fd;                   //< The unix file descriptor.
+  struct sockaddr_in6 addr; //< The IPv6 address we are listenning on (manual bind()).
+  char buf[BUF_SIZE];       //< Buffer for the incomming packet.
 };
 
+/**
+ * Description of a line of the output.
+ */
 struct output_line {
-  WINDOW *ip;
-  WINDOW *db;
-  WINDOW *rate;
-  WINDOW *time;
+  WINDOW *ip;   //< IP address of the considered node.
+  WINDOW *db;   //< Reception power in dBm.
+  WINDOW *rate; //< Reception rate in Mb/s.
+  WINDOW *time; //< Age of this piece of information.
 };
 
+/**
+ * Internal description of a link.
+ * This packet is also directly sent over the network.
+ */
 struct in_air {
-  struct in6_addr  ip;
-  struct timespec stamp;
-  int8_t    db;
-  uint8_t rate;
+  struct in6_addr  ip;   //< IP of the given node.
+  struct timespec stamp; //< Timestamp of the reception of this information (in) or age of this piece of information (out).
+  int8_t    db;          //< Reception power in dBm.
+  uint8_t rate;          //< Reception rate in 0.5Mb/s.
 };
 
+/**
+ * Description of a link.
+ */
 struct line {
-  struct output_line output;
-  struct in_air data;
+  struct in_air data;        //< Internal description.
+  struct output_line output; //< Output zones.
 };
 
+
+// Static variables
+
+/**
+ * Direct link information.
+ * Contains data about how this node receives packets from other nodes.
+*/
 struct line inc[LINE_NB];
+
+/**
+ * Reverse link information.
+ * Contains data about how other nodes receives packets from this node.
+*/
 struct line out[LINE_NB];
+
+/**
+ * Title of the page.
+ */
 WINDOW * title = NULL;
+
+/**
+ * Name of the monitoring interface.
+ */
 char   mon_name[IF_NAMESIZE];
+
+/**
+ * Static flags used to modify the behaviour of this script.
+ * Possible values:
+ * - EVALLINK_FLAG_DAEMON : no output (daemon).
+ * - EVALLINK_FLAG_NOSEND : only listen on the link, do not send packets (slave).
+ */
 char   static_flags;
 
-#define EVALLINK_FLAG_DAEMON   0x01
+#define EVALLINK_FLAG_DAEMON  0x01
 #define EVALLINK_FLAG_NOSEND  0x02
 
-/* Event loop */
+
+// Libev related variables
+
+/**
+ * Event loop containing all the events.
+ */
 struct ev_loop      *event_loop;
+
+/**
+ * Special event used for graceful endings.
+ * Unrolles all the other events, thus ends a "ev_loop(event_loop, 0);" call.
+ */
 struct ev_timer   *event_killer;
+
+/**
+ * Periodic event that sends the packets.
+ */
 struct ev_periodic   *send_mess;
+
+/**
+ * Event linked to a socket which receives packets from other nodes.
+ */
 struct ev_io         *recv_mess;
 
+/**
+ * Callback of the event_killer event.
+ * Unrolles all the other events, thus ends a "ev_loop(event_loop, 0);" call.
+ * Standard prototype for libev's ev_timer callback.
+ * @param loop    Event loop which needs to be stopped.
+ * @param w       Event that tiggered this call, should be 'event_killer'.
+ * @param revents Causes of this call.
+ */
 static void
 event_end(struct ev_loop *loop, struct ev_timer *w, int revents)
 {
@@ -86,6 +155,12 @@ event_end(struct ev_loop *loop, struct ev_timer *w, int revents)
 }
 
 
+// NCurses initialization/cleaning
+
+/**
+ * NCurses initialization.
+ * Create the output zones.
+ */
 static void
 ncurses_init(void)
 {
@@ -127,6 +202,10 @@ ncurses_init(void)
   }
 }
 
+/**
+ * NCurses cleaning.
+ * Free all the windows created.
+ */
 static void
 ncurses_stop(void)
 {
@@ -154,22 +233,34 @@ ncurses_stop(void)
 
 static void update_time(void);
 
+/**
+ * Callback of the send_mess event.
+ * Compute the age of informations concerning other nodes then broadcast it.
+ * Standard prototype for libev's ev_periodic callback.
+ * @param loop    Event loop on which this event is.
+ * @param w       Event that tiggered this call, should be 'send_mess'.
+ * @param revents Causes of this call.
+ */
 static void
 send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
 {
-  int pos;
+  int ret, pos;
   size_t len;
   ssize_t sent_len;
   struct udp_io_t *buffer;
   struct timespec stamp;
   struct in_air   *output;
 
+  /* Retreive the socket structure from the event */
   buffer = (struct udp_io_t*) periodic->data;
   assert(buffer != NULL);
-  pos = clock_gettime(CLOCK_MONOTONIC, &stamp);
-  assert(pos == 0);
 
-  len = sizeof(struct in_air);
+  /* Retreive the current clock */
+  ret = clock_gettime(CLOCK_MONOTONIC, &stamp);
+  assert(ret == 0);
+
+  /* For any node information, evaluate its age and add it to the outgoing buffer */
+  len = 0;
   output = (struct in_air*) buffer->buf;
   for (pos = 0; pos < LINE_NB; ++pos) {
     if (*inc[pos].data.ip.s6_addr32 != 0) {
@@ -187,8 +278,12 @@ send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
       ++output;
     }
   }
+
+  /* Add a zeroed in_air structure that indicates the end of the sent data */
+  len += sizeof(struct in_air);
   memset(output, 0, sizeof(struct in_air));
 
+  /* Send the packet */
   sent_len = sendto(buffer->fd, buffer->buf, len, 0, (struct sockaddr *)&buffer->addr, sizeof(struct sockaddr_in6));
   if (sent_len == -1) {
     PERROR("sendto")
@@ -196,11 +291,22 @@ send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
   }
   assert(sent_len >= 0);
   assert(((size_t)sent_len) == len);
+
+  /* Update our own output if we have one */
   if (!(static_flags & EVALLINK_FLAG_DAEMON)) {
     update_time();
   }
 }
 
+/**
+ * Initializer of the send_mess periodic event.
+ * @param port      Destination UDP port.
+ * @param addr      Destibation IPv6 address (Should be multicast).
+ * @param offset    Offset of the periodic event.
+ * @param delay     Delay of the periodic event.
+ * @param interface Interface to bind on (only if scope is 0).
+ * @param scope "   Scope" of the IPv6 address if it's a link address (index of the corresponding interface).
+ */
 static struct ev_periodic*
 send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, const char* interface, uint32_t scope)
 {
@@ -220,6 +326,7 @@ send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, cons
     return NULL;
   }
 
+  /* Bind to an interface if we were asked to */
   if (scope == 0) {
     if (interface != NULL) {
       if (setsockopt(buffer->fd, SOL_SOCKET, SO_BINDTODEVICE, interface, strlen(interface)) < 0) {
@@ -231,6 +338,8 @@ send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, cons
   } else {
     buffer->addr.sin6_scope_id = scope;
   }
+
+  /* Store the destination */
   buffer->addr.sin6_family = AF_INET6;
   buffer->addr.sin6_port   = htons(port);
   memcpy(&buffer->addr.sin6_addr, addr, sizeof(struct in6_addr));
@@ -255,6 +364,12 @@ send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, cons
   wprintw(win, __VA_ARGS__);                      \
   wrefresh(win);
 
+/**
+ * Update the local output of a given table.
+ * @table Table to update.
+ * @tmp   Char array of size TMP_BUF used for caching.
+ * @stamp Timestamp offset if not NULL.
+ */
 inline static void
 update_time_table(struct line table[], char* tmp, struct timespec *stamp)
 {
@@ -262,11 +377,12 @@ update_time_table(struct line table[], char* tmp, struct timespec *stamp)
 
   for (pos = 0; pos < LINE_NB; ++pos) {
     if (*table[pos].data.ip.s6_addr32 != 0) {
-      if (stamp->tv_nsec == 0 && stamp->tv_sec == 0) {
+      if (stamp == NULL) {
         size = snprintf(tmp, TMP_BUF, "%ld.%09ld", table[pos].data.stamp.tv_sec, table[pos].data.stamp.tv_nsec);
       } else if (stamp->tv_nsec > table[pos].data.stamp.tv_nsec) {
         size = snprintf(tmp, TMP_BUF, "%ld.%09ld", stamp->tv_sec - table[pos].data.stamp.tv_sec, stamp->tv_nsec - table[pos].data.stamp.tv_nsec);
       } else {
+        assert(stamp->tv_sec >= table[pos].data.stamp.tv_sec - 1);
         size = snprintf(tmp, TMP_BUF, "%ld.%09ld", stamp->tv_sec - table[pos].data.stamp.tv_sec - 1, 1000000000 - table[pos].data.stamp.tv_nsec + stamp->tv_nsec);
       }
       assert(size > 0);
@@ -275,22 +391,38 @@ update_time_table(struct line table[], char* tmp, struct timespec *stamp)
   }
 }
 
+
+/**
+ * Update both output tables.
+ */
 static void
 update_time()
 {
   char buf[TMP_BUF];
   int tmp;
-
   struct timespec stamp;
 
+  /* Get the current clock */
   tmp = clock_gettime(CLOCK_MONOTONIC, &stamp);
   assert(tmp == 0);
+
+  /* Update both tables */
   update_time_table(inc, buf, &stamp);
-  stamp.tv_nsec = 0;
-  stamp.tv_sec = 0;
-  update_time_table(out, buf, &stamp);
+  update_time_table(out, buf, NULL);
 }
 
+/**
+ * Data received callback.
+ * Callback of a read_and_parse_monitor (from monitor.h) call, called by listen_cb.
+ * @param stamp     Timestamp of the reception
+ * @param rate      Rate at which the packet was received, in 0.5Mb/s.
+ * @param signal    Signal at which the packet was received, in dBm.
+ * @param from      IPv6 address of the sender.
+ * @param data      Pointer to the memory zone containing the content of the packet.
+ * @param len       Length of this memory zone.
+ * @param machdr_fc Flags of the received frame (can contain for example the "Retry" flag).
+ * @param arg       Pointer that was passed to the read_and_parse_monitor invocation, must contain a mon_io_t structure.
+ */
 static void
 consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct in6_addr *from, \
              const char* data, size_t len, uint16_t machdr_fc, void* arg)
@@ -301,17 +433,20 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
   struct mon_io_t *mon;
   const struct in_air *incoming;
 
+  /* Retreive the mon_io_t structure */
   mon = (struct mon_io_t*)arg;
   assert(mon != NULL);
 
+  /* Discard any locally issued packets */
   for (addr_pos = 0; addr_pos < MAX_ADDR; ++addr_pos) {
     if (memcmp(from, &mon->ip_addr[addr_pos], sizeof(struct in6_addr)) == 0) {
       return;
     }
   }
 
-  /* First store values in inc */
+  /* First store received values in inc */
   for (pos = 0; pos < LINE_NB; ++pos) {
+    /* Check if we already know this IP (the sender) */
     if (*inc[pos].data.ip.s6_addr32 != 0) {
       if (memcmp(&inc[pos].data.ip, from, sizeof(struct in6_addr)) == 0) {
         inc[pos].data.rate = rate;
@@ -351,8 +486,9 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
     /* Then try to see if our ipaddress is inside thoses */
     for (addr_pos = 0; addr_pos < MAX_ADDR; ++addr_pos) {
       if (IN6_IS_ADDR_LINKLOCAL(&mon->ip_addr[addr_pos])) {
+        /* If we still doesn't know our own real address, put it in the title now */
         if (title == NULL) {
-          title =  newwin(LINE_HEIGHT, TITLE_LEN, TITLE_LINE, TITLE_COL);
+          title = newwin(LINE_HEIGHT, TITLE_LEN, TITLE_LINE, TITLE_COL);
           ret = inet_ntop(AF_INET6, &mon->ip_addr[addr_pos], tmp, TMP_BUF);
           assert(ret != NULL);
           NCURSES_REWRITE_WINDOW_CONTENT(title, "%s", tmp)
@@ -401,13 +537,24 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
   }
 }
 
+/**
+ * Callback of the recv_mess event.
+ * Use read_and_parse_monitor from monitor.h to analyse the packet
+ * Standard prototype for libev's ev_io callback.
+ * @param loop    Event loop on which this event is.
+ * @param w       Event that tiggered this call, should be 'recv_mess'.
+ * @param revents Causes of this call.
+ */
 static void
 listen_cb(struct ev_loop *loop, ev_io *io, int revents)
 {
   struct mon_io_t *mon;
 
+  /* Retrieving data from event */
   mon = (struct mon_io_t*)io->data;
   assert(mon != NULL);
+
+  /* Pass the data to the monitor.h parser */
   read_and_parse_monitor(mon, consume_data, mon);
 }
 
@@ -438,7 +585,13 @@ listen_on(in_port_t port, const char* mon_interface, const uint32_t phy_interfac
   return event;
 }
 
-static void down(int sig)
+/**
+ * Callback for signals.
+ * Use the event_killer event to stop the event loop.
+ * @param sig Signal received.
+ */
+static void
+down(int sig)
 {
   ev_timer_set(event_killer, 0, 0);
   ev_timer_start(event_loop, event_killer);
@@ -452,6 +605,11 @@ static void down(int sig)
 #define DEFAULT_TIME_MILLISECOND 200
 #define DEFAULT_SIZE 900
 
+/**
+ * Print a short howto and exit.
+ * @param err Execution code to return.
+ * @param name Name under which this program was called.
+ */
 static void usage(int err, char *name)
 {
   printf("%s: Send packets to the given destination\n", name);
@@ -469,6 +627,9 @@ static void usage(int err, char *name)
   exit(err);
 }
 
+/**
+ * Long options used by getopt_long; see 'usage' for more detail.
+ */
 static const struct option long_options[] = {
   {"help",              no_argument, 0,  'h' },
   {"daemon",            no_argument, 0,  'd' },
@@ -485,7 +646,9 @@ static const struct option long_options[] = {
 const char *default_address   = DEFAULT_ADDRESS;
 const char *default_interface = DEFAULT_INTERFACE;
 
-int main(int argc, char *argv[]) {
+int
+main(int argc, char *argv[])
+{
   int opt;
   const char *addr_s = default_address;
   const char *interface = default_interface;
