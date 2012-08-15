@@ -237,9 +237,9 @@ static void update_time(void);
  * Callback of the send_mess event.
  * Compute the age of informations concerning other nodes then broadcast it.
  * Standard prototype for libev's ev_periodic callback.
- * @param loop    Event loop on which this event is.
- * @param w       Event that tiggered this call, should be 'send_mess'.
- * @param revents Causes of this call.
+ * @param loop     Event loop on which this event is.
+ * @param periodic Event that tiggered this call, should be 'send_mess'.
+ * @param revents  Causes of this call.
  */
 static void
 send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
@@ -542,7 +542,7 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
  * Use read_and_parse_monitor from monitor.h to analyse the packet
  * Standard prototype for libev's ev_io callback.
  * @param loop    Event loop on which this event is.
- * @param w       Event that tiggered this call, should be 'recv_mess'.
+ * @param io      Event that tiggered this call, should be 'recv_mess'.
  * @param revents Causes of this call.
  */
 static void

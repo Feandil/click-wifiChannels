@@ -18,43 +18,102 @@
 #include "radiotap-parser.h"
 #include "network_header.h"
 
-static int error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err, void *arg)
+/**
+ * Custom callback from nl802.11, in case of error ('error message processing customization')
+ * Sets "*arg" to the error code
+ * @param nla netlink address of the peer
+ * @param err netlink error message being processed
+ * @param arg argument passed on through caller, here shloud be a int*
+ * @return NL_STOP: "Stop parsing altogether and discard remaining messages."
+ */
+static int
+error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err, void *arg)
 {
   int *ret = arg;
   *ret = err->error;
   return NL_STOP;
 }
-static int finish_handler(struct nl_msg *msg, void *arg)
+
+/**
+ * Custom callback from nl802.11, in case of NL_CB_FINISH ("Last message in a series of multi part messages received.")
+ * Sets "*arg" to 0
+ * msg metlink message being processed
+ * arg argument passwd on through caller, here shloud be a int*
+ * @return NL_SKIP: "Skip this message. "
+ */
+static int
+finish_handler(struct nl_msg *msg, void *arg)
 {
   int *ret = arg;
   *ret = 0;
   return NL_SKIP;
 }
-static int ack_handler(struct nl_msg *msg, void *arg)
+
+/**
+ * Custom callback from nl802.11, in case of NL_CB_ACK ("Message is an acknowledge.")
+ * Sets "*arg" to 0
+ * msg metlink message being processed
+ * arg argument passwd on through caller, here shloud be a int*
+ * @return NL_STOP: "Stop parsing altogether and discard remaining messages."
+ */
+static int
+ack_handler(struct nl_msg *msg, void *arg)
 {
   int *ret = arg;
   *ret = 0;
   return NL_STOP;
 }
 
+/**
+ * Subfunction for send_nl80211_message: construct a valid nl802.11 message
+ * @param nlmsg Message to complete
+ * @param nlid numeric family identifier (nl80211 internal thing)
+ * @param arg_char char* that was given to send_nl80211_message
+ * @param arg_int uint32_t that was given to send_nl80211_message
+ * @return 0 in case of success, negative values for failures
+ */
 typedef int (*set_80211_message) (struct nl_msg *nlmsg, const int nlid, const char* arg_char, const uint32_t arg_int);
 
+/**
+ * Fill in a message to create a new monitoring interface
+ * Implement set_80211_message
+ * @param nlmsg Message to complete
+ * @param nlid numeric family identifier (nl80211 internal thing)
+ * @param arg_char Name of the monitoring interface that is supposed to be created
+ * @param arg_int Index (WIPHY) of the interface which will be monitored
+ * @return 0 in case of success, negative values for failures
+ */
 static int
 create_monitor_interface(struct nl_msg *nlmsg, const int nlid, const char* arg_char, const uint32_t arg_int)
 {
   int ret;
 
+  /**
+   * Set the type of the message: create new interface
+   */
   genlmsg_put(nlmsg, 0, 0, nlid, 0, 0, NL80211_CMD_NEW_INTERFACE , 0);
+
+  /**
+   * Set the WIPHY of the underlying interface
+   */
   ret = nla_put_u32(nlmsg, NL80211_ATTR_WIPHY, arg_int);
   if (ret < 0) {
     fprintf(stderr, "Failed to construct message (WIPHY) : %i\n", ret);
     return ret;
   }
+
+  /**
+   * Set the desired name for the new interface
+   */
   ret = nla_put_string(nlmsg, NL80211_ATTR_IFNAME, arg_char);
   if (ret < 0) {
     fprintf(stderr, "Failed to construct message (IFNAME) : %i\n", ret);
     return ret;
   }
+
+  /**
+   * Set the desired type of interface : monitoring
+   */
   ret = nla_put_u32(nlmsg, NL80211_ATTR_IFTYPE, NL80211_IFTYPE_MONITOR);
   if (ret < 0) {
     fprintf(stderr, "Failed to construct message (IFTYPE) : %i\n", ret);
@@ -63,19 +122,40 @@ create_monitor_interface(struct nl_msg *nlmsg, const int nlid, const char* arg_c
   return 0;
 }
 
+/**
+ * Fill in a message to delete a monitoring interface
+ * Implement set_80211_message
+ * @param nlmsg Message to complete
+ * @param nlid numeric family identifier (nl80211 internal thing)
+ * @param arg_char Name of the monitoring interface that is supposed to be deleted
+ * @param arg_int Ingnored
+ * @return 0 in case of success, negative values for failures
+ */
 static int
 delete_interface(struct nl_msg *nlmsg, const int nlid, const char* arg_char, const uint32_t arg_int)
 {
   int ret;
   unsigned if_id;
 
+
+  /**
+   * Find the index of the interface to be deleted
+   */
   if_id = if_nametoindex(arg_char);
   if (if_id == 0) {
     fprintf(stderr, "Interface deletion error: no such interface (%s)\n", arg_char);
     return -1;
   }
 
+
+  /**
+   * Set the type of the message: delete an interface
+   */
   genlmsg_put(nlmsg, 0, 0, nlid, 0, 0, NL80211_CMD_DEL_INTERFACE , 0);
+
+  /**
+   * Set the index of the interface to be deleted
+   */
   ret = nla_put_u32(nlmsg, NL80211_ATTR_IFINDEX, if_id);
   if (ret < 0) {
     fprintf(stderr, "Failed to construct message (IFINDEX) : %i\n", ret);
@@ -84,6 +164,13 @@ delete_interface(struct nl_msg *nlmsg, const int nlid, const char* arg_char, con
   return 0;
 }
 
+/**
+ * Sends a 802.11 message
+ * @param content Subfunction that will contruct the content of the message
+ * @param arg_char char* parameter to be transmitted to subfunction content
+ * @param arg_int uint32_t parameter to be transmitted to subfunction content
+ * @return 0 in case of success, negative values for failures
+ */
 static int
 send_nl80211_message(set_80211_message content, const char* arg_char, const uint32_t arg_int)
 {
@@ -166,7 +253,13 @@ message_socket_clean:
   return 0;
 }
 
-
+/**
+ * Open a new monitoring interface
+ * Relies on the nl802.11 API
+ * @param interface Name of the new interface
+ * @param phy_inter Index of the physical interface on which we want to open a monitoring one
+ * @return 0 in case of success, negative values for failures
+ */
 int
 open_monitor_interface(const char *interface, const uint32_t phy_inter) {
 
@@ -177,11 +270,14 @@ open_monitor_interface(const char *interface, const uint32_t phy_inter) {
   int sockfd;
   struct ifreq ifreq;
 
+  /* Send a nl80211 message to create the interface */
   ret = send_nl80211_message(create_monitor_interface, interface, phy_inter);
   if (ret < 0) {
     return ret;
   }
 
+  /* Set the interface UP */
+  /* Open a utility socket */
   sockfd = socket(AF_INET6, SOCK_DGRAM, 0);
   if (sockfd < 0) {
     fprintf(stderr, "Unable to open a socket (for ioctl): ");
@@ -198,7 +294,7 @@ open_monitor_interface(const char *interface, const uint32_t phy_inter) {
     ret = -1;
     goto close_socket;
   }
-  /* Change flag and set it */
+  /* Set the "IFF_UP" flag */
   ifreq.ifr_flags |= IFF_UP;
   ret = ioctl(sockfd, SIOCSIFFLAGS, &ifreq);
   if (ret < 0) {
@@ -217,6 +313,12 @@ delete_open_interface:
   return ret;
 }
 
+/**
+ * Close a monitoring interface
+ * Relies on the nl802.11 API
+ * @param interface Name of the interface
+ * @return 0
+ */
 int
 close_interface(const char *interface)
 {
@@ -224,7 +326,8 @@ close_interface(const char *interface)
   int sockfd;
   struct ifreq ifreq;
 
-
+  /* Set the interface DOWN */
+  /* Open a utility socket */
   sockfd = socket(AF_INET6, SOCK_DGRAM, 0);
   if (sockfd < 0) {
     fprintf(stderr, "Unable to open a socket (for ioctl): ");
@@ -238,7 +341,7 @@ close_interface(const char *interface)
     perror("ioctl(SIOCGIFFLAGS)");
     goto close_socket;
   }
-  /* If opened : change flag and unset it */
+  /* Unset the "IFF_UP" flag */
   if (ifreq.ifr_flags & IFF_UP) {
     ifreq.ifr_flags ^= IFF_UP;
     if (ioctl(sockfd, SIOCSIFFLAGS, &ifreq) < 0) {
@@ -255,10 +358,25 @@ delete_open_interface:
   return 0;
 }
 
+/**
+ * Internal flag : The message destination was us
+ */
 #define READ_CB_MATCH_LOCAL  0x01
+
+/**
+ * Internal flag : The message destination a some multicast address we are listening on
+ */
 #define READ_CB_MATCH_MULTI  0x02
 
-void read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, void* arg)
+/**
+ * Read a packet from a montoring interface
+ * Check the packet integrity, bind() equivalent, transmit UDP data to subfunction
+ * @param in      Opaque structure describing the monitoring interface
+ * @param consume Subfunction that will handle the data
+ * @param arg     Argument to be transmitted directly to the subfunction
+ */
+void
+read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, void* arg)
 {
   int tmp;
   char match;
