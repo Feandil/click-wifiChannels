@@ -46,19 +46,19 @@
  * Description of a socket.
  */
 struct eval_buffer {
-  int fd;                   //< The unix file descriptor.
-  struct sockaddr_in6 addr; //< The IPv6 address we are listenning on (manual bind()).
-  char buf[BUF_SIZE];       //< Buffer for the incomming packet.
+  int fd;                   //!< The unix file descriptor.
+  struct sockaddr_in6 addr; //!< The IPv6 address we are listenning on (manual bind()).
+  char buf[BUF_SIZE];       //!< Buffer for the incomming packet.
 };
 
 /**
  * Description of a line of the output.
  */
 struct output_line {
-  WINDOW *ip;   //< IP address of the considered node.
-  WINDOW *db;   //< Reception power in dBm.
-  WINDOW *rate; //< Reception rate in Mb/s.
-  WINDOW *time; //< Age of this piece of information.
+  WINDOW *ip;   //!< IP address of the considered node.
+  WINDOW *db;   //!< Reception power in dBm.
+  WINDOW *rate; //!< Reception rate in Mb/s.
+  WINDOW *time; //!< Age of this piece of information.
 };
 
 /**
@@ -66,18 +66,18 @@ struct output_line {
  * This packet is also directly sent over the network.
  */
 struct in_air {
-  struct in6_addr  ip;   //< IP of the given node.
-  struct timespec stamp; //< Timestamp of the reception of this information (in) or age of this piece of information (out).
-  int8_t    db;          //< Reception power in dBm.
-  uint8_t rate;          //< Reception rate in 0.5Mb/s.
+  struct in6_addr  ip;   //!< IP of the given node.
+  struct timespec stamp; //!< Timestamp of the reception of this information (in) or age of this piece of information (out).
+  int8_t    db;          //!< Reception power in dBm.
+  uint8_t rate;          //!< Reception rate in 0.5Mb/s.
 };
 
 /**
  * Description of a link.
  */
 struct line {
-  struct in_air data;        //< Internal description.
-  struct output_line output; //< Output zones.
+  struct in_air data;        //!< Internal description.
+  struct output_line output; //!< Output zones.
 };
 
 

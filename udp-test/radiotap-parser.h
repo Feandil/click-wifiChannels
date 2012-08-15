@@ -9,13 +9,13 @@
  *  Internal iterator for radiotap exploration.
  */
 struct ieee80211_radiotap_iterator {
-	struct ieee80211_radiotap_header *hdr; //< Base header.
-        uint8_t *next;                         //< Next argument position.
-	uint8_t *arg;                          //< Current argument position.
+	struct ieee80211_radiotap_header *hdr; //!< Base header.
+        uint8_t *next;                         //!< Next argument position.
+	uint8_t *arg;                          //!< Current argument position.
 
-	ssize_t len;                           //< Length of the header
-        uint32_t bitmap;                       //< Bitmap of the argument contained in the header
-	unsigned int index;                    //< Next index
+	ssize_t len;                           //!< Length of the header
+        uint32_t bitmap;                       //!< Bitmap of the argument contained in the header
+	unsigned int index;                    //!< Next index
 };
 
 /**

@@ -25,29 +25,29 @@
  * "Opaque" structure for writing operations.
  */
 struct zutil_write {
-  char out[OUT_BUF_SIZE]; //< Buffer used between zlib and the output file.
-  z_stream strm;          //< Opaque structure from zlib.
-  FILE *output;           //< Output file.
+  char out[OUT_BUF_SIZE]; //!< Buffer used between zlib and the output file.
+  z_stream strm;          //!< Opaque structure from zlib.
+  FILE *output;           //!< Output file.
 };
 
 /**
  * "Opaque" structure for reading operations
  */
 struct zutil_read {
-  char in[(2 * IN_BUF_SIZE) + 1]; /*< Buffer between zlib and the zutil client.
+  char in[(2 * IN_BUF_SIZE) + 1]; /**< Buffer between zlib and the zutil client.
                                    * It is divided in two parts, the first IN_BUF_SIZE bytes
                                    * and the next IN_BUF_SIZE bytes (the 1 here is for adding a \0 on some cases)
                                    */
-  char inc[INC_BUF_SIZE];         //< Buffer between the input file and zlib.
-  z_stream strm;                  //< Opaque structure from zlib.
-  char *start;                    //< Pointer to the next byte to be read by the client.
-  char *end;                      //< Pointer to the last byte to be read by the client.
-  bool swapped;                   /* Indication to which part of the 'in' buffer is currently used.
+  char inc[INC_BUF_SIZE];         //!< Buffer between the input file and zlib.
+  z_stream strm;                  //!< Opaque structure from zlib.
+  char *start;                    //!< Pointer to the next byte to be read by the client.
+  char *end;                      //!< Pointer to the last byte to be read by the client.
+  bool swapped;                   /**< Indication to which part of the 'in' buffer is currently used.
                                    * true indicates that the second part contains the more recent zlib output
                                    * false indicates that the first part contains the more recent zlib output
                                    * (Except during the initialization or internal zutil_read_input calls)
                                    */
-  FILE *input;                    //< Input file.
+  FILE *input;                    //!< Input file.
 };
 
 /**
