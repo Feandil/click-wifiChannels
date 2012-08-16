@@ -34,7 +34,7 @@ SOTIMESTAMP_INCLUDE ?=
 
 MONITOR_DEP = monitor.o radiotap-parser.o crc.o
 
-all: server client transfo evallink extract
+all: server client evallink extract
 
 monitor.o: monitor.c
 	$(COMPILE.c) $(SOTIMESTAMP_INCLUDE) $(NL_INCLUDE) $(OUTPUT_OPTION) $<
@@ -48,9 +48,6 @@ server: server.o zutil.o $(MONITOR_DEP)
 
 client: client.o zutil.o
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(EV_LIBS) $(RT_LIBS) -o $@
-
-transfo: transfo.o
-	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
 extract: extract.o zutil.o
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(MATH_LIBS) -o $@

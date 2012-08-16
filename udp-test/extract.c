@@ -407,7 +407,7 @@ next_input(struct state *inc, struct state *states)
 
   do {
     tmp = read_input(inc);
-    if (tmp > 1) {
+    if ((tmp > 1) && (states != NULL)) {
       if (inc == states) {
         other_ts = states[1].timestamp_old + interval * (double) (((int64_t) (states[0].count_new - states[1].count_new)) - sync_count_diff);
       } else {
@@ -573,6 +573,33 @@ next_line_or_file(struct state *in_state, struct state *states)
   PRINTF("Success\n");
   /* Use recursive call to find a valid packet */
   return next_line_or_file(in_state, states);
+}
+
+/**
+ * Transform one stream into 0's and 1's
+ */
+static void
+simple_print(struct state *inc, FILE* out)
+{
+  ssize_t tmp;
+  uint64_t i;
+
+  /* Initialization: read one line */
+  tmp = next_input(inc, NULL);
+  if (tmp < 0) {
+    printf("End of file before any input ...\n");
+    exit(-4);
+  }
+  if (interval != 0) {
+    inc->timestamp_old = inc->timestamp;
+  }
+  inc->count_old = inc->count_new;
+  while (next_line_or_file(inc, NULL) >= 0) {
+    for (i = inc->count_old; i < inc->count_new - 1; ++i) {
+      fprintf(out, "0");
+    }
+    fprintf(out, "1");
+  }
 }
 
 /**
@@ -1657,7 +1684,27 @@ PRINTF("Debug enabled\n")
     return 1;
   }
 
+  interval /= 1000;
+  secure_interval = interval / 2;
+
   if (pos < SOURCES) {
+    if (pos == 1) {
+      if (out_filename != NULL) {
+        output = fopen(out_filename, "w");
+        if (output == NULL) {
+          printf("Unable to open output file '%s'\n", out_filename);
+          return -1;
+        }
+        simple_print(states,output);
+        fclose(output);
+        free(states);
+        free(first);
+        return 0;
+      } else {
+        printf("Only one input file without output file : error\n");
+        usage(-2, argv[0]);
+      }
+    }
     printf("Not enough input files (%i < %i)\n", pos, SOURCES);
     usage(-2, argv[0]);
   }
@@ -1666,8 +1713,6 @@ PRINTF("Debug enabled\n")
     printf("No time slot duration specified, unable to synchronyse inputs\n");
     usage(-2, argv[0]);
   }
-  interval /= 1000;
-  secure_interval = interval / 2;
 
   if (histo_filename != NULL) {
     if (k == 0) {
