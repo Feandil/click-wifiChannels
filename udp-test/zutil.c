@@ -366,7 +366,12 @@ zread_end(struct zutil_read *buffer)
 }
 
 #ifdef TEST
-/* A small zcat emulation using this library, for testing purposes */
+/**
+ * A small zcat emulation using this library, for testing purposes
+ * @param argc Argument Count
+ * @param argv Argument Vector
+ * @return Execution return code
+ */
 int
 main(int argc, char *argv[])
 {
