@@ -397,7 +397,7 @@ exit:
  * Resynchronize the streams in case of a global desynchronization
  * @param inc    Input state description to be updated.
  * @param states Table containing the two different streams
- * @return EOF: -1, ok: 1
+ * @return EOF: -1, ok: 1-3
  */
 static ssize_t
 next_input(struct state *inc, struct state *states)
@@ -1771,9 +1771,7 @@ PRINTF("Debug enabled\n")
     fclose(output);
   }
 
-  if (stats || second != NULL) {
-    statistics = eval_stats(first);
-  }
+  statistics = eval_stats(first);
 
   if (stats) {
     print_stats(first, statistics);
@@ -1850,6 +1848,7 @@ PRINTF("Debug enabled\n")
     free(second);
   }
 
+  free(statistics);
   free(states);
 
   return 0;
