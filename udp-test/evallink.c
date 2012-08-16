@@ -112,11 +112,13 @@ char   mon_name[IF_NAMESIZE];
  * Possible values:
  * - EVALLINK_FLAG_DAEMON : no output (daemon).
  * - EVALLINK_FLAG_NOSEND : only listen on the link, do not send packets (slave).
+ * - EVALLINK_FLAG_MON_EXIST : do not open a new monitoring interface (slace).
  */
 char   static_flags;
 
 #define EVALLINK_FLAG_DAEMON  0x01
 #define EVALLINK_FLAG_NOSEND  0x02
+#define EVALLINK_FLAG_MON_EXIST 0x04
 
 
 // Libev related variables
@@ -567,7 +569,11 @@ listen_on(in_port_t port, const char* mon_interface, const uint32_t phy_interfac
   struct ev_io* event;
   struct mon_io_t* mon;
 
-  mon = monitor_listen_on(NULL, port, mon_interface, phy_interface, wan_interface, multicast, 1);
+  if (static_flags & EVALLINK_FLAG_MON_EXIST) {
+    mon = monitor_listen_on(NULL, port, mon_interface, phy_interface, wan_interface, multicast, 0);
+  } else {
+    mon = monitor_listen_on(NULL, port, mon_interface, phy_interface, wan_interface, multicast, 1);
+  }
   if (mon == NULL) {
     PRINTF("Unable to listen on monitoring interface")
     return NULL;
@@ -678,7 +684,7 @@ main(int argc, char *argv[])
         if (static_flags && EVALLINK_FLAG_DAEMON) {
           usage(1, argv[0]);
         }
-        static_flags |= EVALLINK_FLAG_NOSEND;
+        static_flags |= EVALLINK_FLAG_NOSEND | EVALLINK_FLAG_MON_EXIST;
         break;
       case 'a':
         addr_s = optarg;
@@ -785,7 +791,10 @@ main(int argc, char *argv[])
   }
   free(recv_mess);
   free(event_killer);
-  close_interface(mon_name);
+
+  if (!(static_flags & EVALLINK_FLAG_MON_EXIST)) {
+    close_interface(mon_name);
+  }
 
   return 0;
 }
