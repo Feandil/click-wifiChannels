@@ -42,6 +42,8 @@
  * Vincent Brillault (git@lerya.net)
  */
 
+/** @file ieee80211_radiotap.h Description of a radiotap header */
+
 #ifndef IEEE80211RADIOTAP_H
 #define IEEE80211RADIOTAP_H
 

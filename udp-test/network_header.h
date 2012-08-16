@@ -1,6 +1,8 @@
 #ifndef NETWORK_HEADER_H
 #define NETWORK_HEADER_H
 
+/** @file network_header.h Structure that describe standard network headers */
+
 #include <inttypes.h>
 
 /**

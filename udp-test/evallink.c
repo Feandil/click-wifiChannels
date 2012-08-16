@@ -19,6 +19,9 @@
 #include "debug.h"
 #include "monitor.h"
 
+/** @file evallink.c Main system of the tool that tries to evaluate the links by broadcasting packets */
+
+
 #define BUF_SIZE  1500
 #define TMP_BUF     48
 #define LINE_NB      4
@@ -38,7 +41,6 @@
 #define TITLE_LINE   2
 #define TITLE_COL   22
 #define TITLE_LEN   80
-
 
 // Internal structure definition
 

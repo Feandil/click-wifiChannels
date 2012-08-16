@@ -1,6 +1,8 @@
 #ifndef DEBUG_H
 #define DEBUG_H
 
+/** @file debug.h Debug macros */
+
 #ifdef DEBUG
   #include <stdio.h>
   #define PERROR(x) perror(x);

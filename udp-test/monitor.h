@@ -1,6 +1,8 @@
 #ifndef MONITOR_H
 #define MONITOR_H
 
+/** @file monitor.h Functions to simplify the use of a monitoring interface to capture packet with some frame information */
+
 #include <netinet/in.h>
 #include <linux/if_packet.h>
 

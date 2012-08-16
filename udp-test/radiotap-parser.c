@@ -19,12 +19,15 @@
  *  - Use standard asm/byteorder.h
  *  - Simplify (remove support of extend_mask)
  *  - No void* pointer arithmetic
+ *  - Doxygen compatible documentation
  * Vincent Brillault (git@lerya.net)
  */
 #include <asm/byteorder.h>
 #include <assert.h>
 #include <errno.h>
 #include <unistd.h>
+
+/** @file radiotap-parser.c Implementation of a parser for version 0 radiotap headers */
 
 #include "radiotap-parser.h"
 

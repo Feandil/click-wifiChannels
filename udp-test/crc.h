@@ -4,6 +4,8 @@
 #ifndef _CRC32_H
 #define _CRC32_H
 
+/** @file crc.h Headers for 802.11 crc function */
+
 #include <inttypes.h>
 #include <stdlib.h>
 

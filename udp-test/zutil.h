@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+/** @file zutil.h Headers for a small simplified interface with zlib */
+
 /**
  * Size of the buffer between zlib and the output file (for zutil_write).
  */

@@ -17,6 +17,8 @@
 #include <unistd.h>
 #include "debug.h"
 
+/** @file client.c Main system of the tool that sends packets */
+
 /* udp buffers */
 #define BUF_SIZE 1500
 #define TIME_SIZE 128

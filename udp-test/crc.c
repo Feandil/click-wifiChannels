@@ -1,6 +1,8 @@
 
 #include "crc.h"
 
+/** @file crc.c Implementation of the 802.11 CRC */
+
 /**
  * Static lookup crc32 table.
 */

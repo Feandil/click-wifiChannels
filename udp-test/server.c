@@ -19,6 +19,8 @@
 #include "network_header.h"
 #include "zutil.h"
 
+/** @file server.c Main system of the tool that store received packets for later statistical analysis */
+
 /* udp buffers */
 #define ADDR_BUF_SIZE  128
 #define HDR_SIZE        16

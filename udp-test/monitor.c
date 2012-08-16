@@ -1,5 +1,7 @@
 #include "monitor.h"
 
+/** @file monitor.c Implementation of the monitor functions */
+
 #include <assert.h>
 #include <errno.h>
 #include <ifaddrs.h>

@@ -6,11 +6,10 @@
 #include "debug.h"
 #include "zutil.h"
 
-/*
+/** @file zutil.c Implementation of the zlib interface.
  * This file contain direct interfaces to the zlib API.
  * Most of this function can be deduced more or less directly from the zlib documentation
  */
-
 
 /**
  * Add data to a encoding stream (call exit(1) in case of failure).

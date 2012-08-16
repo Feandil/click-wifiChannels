@@ -13,11 +13,8 @@
 #include "debug.h"
 #include "zutil.h"
 
-/*
-#ifdef DEBUG
-#undef DEBUG
-#endif
-*/
+/** @file extract.c Main system of the tool that extract statisticts from outputs of our server */
+
 
 #ifdef DEBUG
 # include <signal.h>

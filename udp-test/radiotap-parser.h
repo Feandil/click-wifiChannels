@@ -5,6 +5,8 @@
 #include <sys/types.h>
 #include "ieee80211_radiotap.h"
 
+/** @file radiotap-parser.h Headers for radiotap header parsing */
+
 /**
  *  Internal iterator for radiotap exploration.
  */
