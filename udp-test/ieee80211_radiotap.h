@@ -81,7 +81,7 @@ struct ieee80211_radiotap_header {
 						 * introduction of compatible
 						 * new fields does not count.
 						 */
-	uint8_t it_pad;
+	uint8_t it_pad;                 //!< Padding
 	uint16_t it_len;		/**< length of the whole
 					 * header in bytes, including
 					 * it_version, it_pad,

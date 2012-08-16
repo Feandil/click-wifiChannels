@@ -21,25 +21,43 @@
 
 /** @file evallink.c Main system of the tool that tries to evaluate the links by broadcasting packets */
 
-
+//! Size of the reception buffer
 #define BUF_SIZE  1500
+//! Size of short buffers for printing purposes
 #define TMP_BUF     48
+//! Number of lines per table
 #define LINE_NB      4
+//! Height of a text line
 #define LINE_HEIGHT  1
+//! Space left empty between two columns
 #define COL_SEP      1
+//! Height left emply between two lignes
 #define LINE_SEP     1
+//! Height left emply between two tables
 #define PAR_SEP      3
+//! Position of the first line (height)
 #define FIRST_LINE   5
+//! Length of the first column
 #define FIR_COL_S   42
+//! Length of the second column
 #define SEC_COL_S    8
+//! Length of the third column
 #define THI_COL_S    6
+//! Length of the fourth column
 #define FOU_COL_S   24
+//! Position of the first column
 #define FIRST_COL    3
+//! Position of the second column
 #define SEC_COL      (FIRST_COL  + COL_SEP + FIR_COL_S)
+//! Position of the third column
 #define THIRD_COL    (SEC_COL    + COL_SEP + SEC_COL_S)
+//! Position of the fourth column
 #define FOURTH_COL   (THIRD_COL  + COL_SEP + THI_COL_S)
+//! Position of the title (height)
 #define TITLE_LINE   2
+//! Position of the title (lateral)
 #define TITLE_COL   22
+//! Length of the title
 #define TITLE_LEN   80
 
 // Internal structure definition
@@ -116,10 +134,20 @@ char   mon_name[IF_NAMESIZE];
  */
 char   static_flags;
 
+/**
+ * Static flag: no output (daemon).
+ */
 #define EVALLINK_FLAG_DAEMON  0x01
-#define EVALLINK_FLAG_NOSEND  0x02
-#define EVALLINK_FLAG_MON_EXIST 0x04
 
+/**
+ * Static flag: only listen on the link, do not send packets (slave).
+ */
+#define EVALLINK_FLAG_NOSEND  0x02
+
+/**
+ * Static flag: do not open a new monitoring interface (slace).
+ */
+#define EVALLINK_FLAG_MON_EXIST 0x04
 
 // Libev related variables
 
@@ -362,6 +390,9 @@ send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, cons
   return event;
 }
 
+/**
+ * Clean and rewrite a NCurses window
+ */
 #define NCURSES_REWRITE_WINDOW_CONTENT(win, ...)  \
   werase(win);                                    \
   wmove(win, 0, 0);                               \
@@ -370,9 +401,9 @@ send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, cons
 
 /**
  * Update the local output of a given table.
- * @table Table to update.
- * @tmp   Char array of size TMP_BUF used for caching.
- * @stamp Timestamp offset if not NULL.
+ * @param table Table to update.
+ * @param tmp   Char array of size TMP_BUF used for caching.
+ * @param stamp Timestamp offset if not NULL.
  */
 inline static void
 update_time_table(struct line table[], char* tmp, struct timespec *stamp)
@@ -562,6 +593,15 @@ listen_cb(struct ev_loop *loop, ev_io *io, int revents)
   read_and_parse_monitor(mon, consume_data, mon);
 }
 
+/**
+ * Create the libev io event that listen on the interface.
+ * @param port          Port to bind on
+ * @param mon_interface Name of the monitoring interface
+ * @param phy_interface Index (WIPHY) of the underlying physical interface to monitor on
+ * @param wan_interface Name of the underlying interface to monitor on
+ * @param multicast     Multicast address to bind on
+ * @return started libev io event which listen for new packets
+ */
 static struct ev_io*
 listen_on(in_port_t port, const char* mon_interface, const uint32_t phy_interface, const char* wan_interface, \
           const struct in6_addr* multicast)
@@ -606,11 +646,17 @@ down(int sig)
 }
 
 /* Default Values */
+//! Default port for evallink communications
 #define EVALLINK_DEFAULT_PORT 10102
+//! Default multicast address for evallink communications
 #define EVALLINK_DEFAULT_ADDRESS "ff02::2"
+//! Default interface for evallink communications
 #define EVALLINK_DEFAULT_INTERFACE "wlan0"
+//! Default interval in seconds between two evallink communications
 #define EVALLINK_DEFAULT_TIME_SECOND 0
+//! Default interval in milliseconds between two evallink communications
 #define EVALLINK_DEFAULT_TIME_MILLISECOND 200
+//! Default packet size for evallink communications
 #define EVALLINK_DEFAULT_SIZE 900
 
 /**
@@ -651,9 +697,22 @@ static const struct option long_options[] = {
   {NULL,                          0, 0,   0  }
 };
 
+/**
+ * Default address
+ */
 const char *default_address   = EVALLINK_DEFAULT_ADDRESS;
+
+/**
+ * Default interface
+ */
 const char *default_interface = EVALLINK_DEFAULT_INTERFACE;
 
+/**
+ * Main function for the evallink tool.
+ * @param argc Argument Count
+ * @param argv Argument Vector
+ * @return Execution return code
+ */
 int
 main(int argc, char *argv[])
 {

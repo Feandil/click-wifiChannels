@@ -371,6 +371,11 @@ delete_open_interface:
 #define READ_CB_MATCH_MULTI  0x02
 
 /**
+ * Standard structures won't be able to overflow ssize_t, cast it to ssize_t as our len is a ssize_t.
+ */
+#define SSIZE_OF(a) ((ssize_t)sizeof(a))
+
+/**
  * Read a packet from a montoring interface
  * Check the packet integrity, bind() equivalent, transmit UDP data to subfunction
  * @param in      Opaque structure describing the monitoring interface
@@ -397,6 +402,7 @@ read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, void* a
 
   assert(in != NULL);
 
+  /* Prepare the data structures for the recvmesg */
   memset(&in->hdr, 0, sizeof(struct msghdr));
   in->hdr.msg_iov = &iov;
   in->hdr.msg_iovlen = 1;
@@ -408,14 +414,18 @@ read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, void* a
   in->hdr.msg_namelen = sizeof(struct sockaddr_ll);
   stamp = &date;
 
+  /* Receive a packet with a system header */
   len = recvmsg(in->fd, &in->hdr, MSG_DONTWAIT);
   if (len < 0) {
     PERROR("recvmsg")
   } else if (len == 0) {
     PRINTF("Connection Closed\n")
   } else {
+    /* Get a timsestamp, in case there is none inside the headers */
     tmp = clock_gettime(CLOCK_MONOTONIC, stamp);
     assert(tmp == 0);
+
+    /* Search inside the header for a timestamp which would remplace our stamp */
     for (chdr = CMSG_FIRSTHDR(&in->hdr); chdr; chdr = CMSG_NXTHDR(&in->hdr, chdr)) {
       if ((chdr->cmsg_level == SOL_SOCKET)
            && (chdr->cmsg_type == SO_TIMESTAMPING)) {
@@ -423,20 +433,26 @@ read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, void* a
       }
     }
 
+    /* Radiotap starts with 2 zeros */
     if (in->buf[0] != 0 || in->buf[1] != 0) {
-      /* Radiotap starts with 2 zeros */
       return;
     }
+
+    /* Extract the packet length */
     radiotap_len = (((uint16_t)in->buf[3]) << 8) + ((uint8_t)in->buf[2]);
     if (radiotap_len > len) {
-      /* Packet too short */
+      /* Received packet too short compared to announced size */
       return;
     }
+
+    /* Initialiser the radiotap heade */
     hdr = (struct ieee80211_radiotap_header*) in->buf;
     if (ieee80211_radiotap_iterator_init(&iterator, hdr , len) != 0) {
       /* Radiotap error */
       return;
     }
+
+    /* Extract the rate and the signal for the radiotap header */
     uint8_t rate = 0;
     int8_t signal = 0;
     while ((tmp = ieee80211_radiotap_iterator_next(&iterator, IEEE80211_RADIOTAP_DBM_ANTSIGNAL)) >= 0) {
@@ -449,64 +465,73 @@ read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, void* a
           break;
       }
     }
+
+    /* Next header */
     machdr = (struct header_80211*) (in->buf + radiotap_len);
     len -= radiotap_len;
+
+    /* Let's drop any packet that would be too short for being insteresting */
     if ((unsigned)len < sizeof(struct header_80211) + sizeof(struct header_llc) + sizeof(struct header_ipv6) + sizeof(struct header_udp)) {
       /* Packet too short */
       return;
     }
 
+    /* Drop any frame which is not data (control) */
     if (((machdr->fc & 0x000c) >> 2) != 0x02) {
-      /* Non DATA type */
       return;
     }
 
+    /* Verify that we are the destination (first part) */
     match = 0;
+    /* Is this a direclty sent packet ? */
     if (memcmp(machdr->da, in->hw_addr, 6) == 0) {
       match = READ_CB_MATCH_LOCAL;
     }
-
+    /* Is this a multicast packet that correspond to our listening multicast address ? */
     if (machdr->da[0] == 0x33 && machdr->da[1] == 0x33 && (memcmp(machdr->da + 2, in->multicast.s6_addr + 12, 4) == 0)) {
       match = READ_CB_MATCH_MULTI;
     }
-
+    /* Drop if there is no match */
     if (!match) {
       return;
     }
 
+    /* Check the 802.11 crc */
     assert(len > 4);
     if (crc32_80211((const uint8_t*) machdr, (size_t)(len - 4)) != *((const uint32_t*)(((const uint8_t*) machdr) + (len - 4)))) {
       /* Bad_ CRC */
       return;
     }
 
-    /* Check if there is a QoS field */
+    /* Check if there is a QoS field (and skip it) */
     if ((machdr->fc & 0xf0) == 0x80) {
       llchdr = (const struct header_llc*) (((const uint8_t*) machdr) + sizeof (struct header_80211) + 2);
       len -= 2;
     } else {
       llchdr = (const struct header_llc*) (machdr + 1);
     }
+
+    /* Filter non IPv6 traffic */
     if (llchdr->type != 0xdd86) {
-      /* Non ipv6 traffic */
       return;
     }
     iphdr = (const struct header_ipv6*) (llchdr + 1);
     if (iphdr->version != 0x06) {
-      /* Non ipv6 traffic */
       return;
     }
-/* sizeof will be smaller that the maximum of ssize_t thus this shouldn't be a problem */
-#define SSIZE_OF(a)  ((ssize_t)sizeof(a))
+
     len -= SSIZE_OF(struct header_80211) + SSIZE_OF(struct header_llc) + SSIZE_OF(struct header_ipv6) + SSIZE_OF(struct header_udp);
 
+    /* Now that we have the IPv6 header, verify that we are the destination (part 2) */
     switch (match) {
       case READ_CB_MATCH_MULTI:
+        /* It was a multicast match, verify the multicast address */
         if (memcmp(iphdr->dst, in->multicast.s6_addr16, 16) != 0) {
           return;
         }
         break;
       case READ_CB_MATCH_LOCAL:
+        /* It was a direct packet, verify it corresponds to one of our IPv6s */
         for (tmp = 0; tmp < MAX_ADDR; ++tmp) {
           if (memcmp(iphdr->dst, in->ip_addr[tmp].s6_addr16, 16) == 0) {
             break;
@@ -518,30 +543,45 @@ read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, void* a
         break;
     }
 
+    /* Drop non UDP packets */
     if (iphdr->next != 0x11) {
-      /* Not directly UDP */
       return;
     }
 
     udphdr = (const struct header_udp*) (iphdr + 1);
+
+    /* Check the destinaion port */
     if (udphdr->dst_port != in->port) {
       /* Not the good destination */
       return;
     }
 
-    len -= 4; /* Forget the radio footer */
+    /* Forget the radio footer */
+    len -= 4;
 
+    /* Bad packet : bad length */
     if (ntohs(udphdr->len) != len + SSIZE_OF(struct header_udp)) {
-      /* Bad packet : bad length */
       return;
     }
-#undef SSIZE_OF
 
+    /* Transmit the data to the consuming subfunction */
     assert(len > 0);
     (*consume)(stamp, rate, signal, (const struct in6_addr*)iphdr->src, (const char*) (udphdr + 1), (size_t)len, machdr->fc, arg);
   }
 }
+#undef SSIZE_OF
 
+/**
+ * Create a opaque structure which can be used by read_and_parse_monitor to read packets from a monitoring interface
+ * @param mon           Memory zone that will contain the opaque structure. If NULL, the malloc function is called
+ * @param port          Port on which bind our listening process
+ * @param mon_interface Name of the monitoring interface to use
+ * @param phy_interface Index (WIPHY) of the interface to monitor (unimportant if not 'first')
+ * @param wan_interface Name of the interface monitored (Used to extract the local addresses)
+ * @param multicast     Multicat address to bind on
+ * @param first         Indicate if the monitoring interface doesn't exist (true) and thus need to be created
+ * @return An opaque structure, containing an socket, that can be used by read_and_parse_monitor. Need to be freed after use if 'mon' was NULL
+ */
 struct mon_io_t*
 monitor_listen_on(struct mon_io_t* mon, in_port_t port, const char* mon_interface, const uint32_t phy_interface, \
                   const char* wan_interface, const struct in6_addr* multicast, char first)
@@ -581,6 +621,7 @@ monitor_listen_on(struct mon_io_t* mon, in_port_t port, const char* mon_interfac
     }
   }
 
+  /* Find the monitor interface index */
   if_id = if_nametoindex(mon_interface);
   if (if_id == 0) {
     PRINTF("Monitor interface lost ....\n")
@@ -607,33 +648,39 @@ monitor_listen_on(struct mon_io_t* mon, in_port_t port, const char* mon_interfac
   memcpy(&mon->multicast, multicast, sizeof(struct in6_addr));
   mon->port = htons(port);
 
-  /* Find local addresses */
+  /* Store local addresses */
+  /* Open a temp socket */
   tmp_fd = socket(AF_INET6, SOCK_DGRAM, 0);
   if (tmp_fd < 0) {
     PERROR("socket")
     return NULL;
   }
-
+  /* IOCTL: get mac address */
   snprintf(ifreq.ifr_name, IF_NAMESIZE, "%s", wan_interface);
   if (ioctl(tmp_fd, SIOCGIFHWADDR, (char *)&ifreq) < 0) {
     PERROR("ioctl(sockfd");
     return NULL;
   }
+  /* Store the result (MAC address) */
   memcpy(mon->hw_addr, ifreq.ifr_ifru.ifru_hwaddr.sa_data, 6);
+  /* Close the temp socket */
   close(tmp_fd);
 
+  /* Store the IPv6 addresses */
   if (getifaddrs(&ifaddr) < 0) {
     PERROR("getifaddrs");
     return NULL;
   }
   tmp = 0;
   for (head = ifaddr; ifaddr != NULL; ifaddr = ifaddr->ifa_next) {
+    /* Only store IPv6 address */
     if (ifaddr->ifa_addr == NULL || ifaddr->ifa_name == NULL) {
       continue;
     }
     if (ifaddr->ifa_addr->sa_family != AF_INET6) {
       continue;
     }
+    /* Only store addresses corresponding to our interface */
     if (strcmp(ifaddr->ifa_name, wan_interface) == 0) {
       if (tmp >= MAX_ADDR) {
          PRINTF("Too many addr, not able to store them")

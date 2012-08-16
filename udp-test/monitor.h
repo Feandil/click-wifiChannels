@@ -83,5 +83,16 @@ typedef void (*consume_mon_message) (struct timespec *stamp, uint8_t rate, int8_
  */
 void read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, void* arg);
 
+/**
+ * Create a opaque structure which can be used by read_and_parse_monitor to read packets from a monitoring interface
+ * @param mon           Memory zone that will contain the opaque structure. If NULL, the malloc function is called
+ * @param port          Port on which bind our listening process
+ * @param mon_interface Name of the monitoring interface to use
+ * @param phy_interface Index (WIPHY) of the interface to monitor (unimportant if not 'first')
+ * @param wan_interface Name of the interface monitored (Used to extract the local addresses)
+ * @param multicast     Multicat address to bind on
+ * @param first         Indicate if the monitoring interface doesn't exist (true) and thus need to be created
+ * @return An opaque structure, containing an socket, that can be used by read_and_parse_monitor. Need to be freed after use if 'mon' was NULL
+ */
 struct mon_io_t* monitor_listen_on(struct mon_io_t* mon, in_port_t port, const char* mon_interface, const uint32_t phy_interface, const char* wan_interface, const struct in6_addr* multicast, char first);
 #endif /* MONITOR_H */
