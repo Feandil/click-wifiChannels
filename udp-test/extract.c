@@ -21,12 +21,23 @@
 #endif
 
 /* Stupid dynamic structure */
+/**
+ * Number of element per list step.
+ */
 #define LIST_STEP 7
+/**
+ * "Array list" : chained list of arrays
+ */
 struct array_list_u64 {
-  uint64_t   data[LIST_STEP];
-  struct array_list_u64 *next;
+  uint64_t   data[LIST_STEP];  //!< Data contain in the list
+  struct array_list_u64 *next; //!< Next list element (NULL at the end)
 };
 
+/**
+ * Increment an indexed counter in an "Array List" (Recursive function).
+ * @param list  "Array List" countaining the indexed counters
+ * @param count Index of the counter to increment
+ */
 static void
 increment_counter(struct array_list_u64 *list, uint64_t count)
 {
@@ -45,91 +56,140 @@ increment_counter(struct array_list_u64 *list, uint64_t count)
   }
 }
 
-/* File reading structs */
+/**
+ * Input description.
+ */
 struct input_p
 {
-  char               *filename;
-  int                 filename_count_start;
-  int                 filename_count;
-  struct zutil_read   input;
-  struct in6_addr     src;
-  bool                fixed_ip;
-  bool                origin;
+  char               *filename;             //!< Filename of the currently opened file
+  int                 filename_count_start; //!< Index of the first rotated file, -1 if non rotated files
+  int                 filename_count;       //!< Index of the current rotated file, undefined if non rotated files
+  struct zutil_read   input;                //!< Zutil opaque structure used to decompress the input
+  struct in6_addr     src;                  //!< If not zeroed, IPv6 address of the source to be considered (if the data contain more than one source IP)
+  bool                fixed_ip;             //!< Indicates if 'src' is empty or not
+  bool                origin;               //!< If true, use the origin timestamp to synchronyse paquets. If false, use the received timestamp
 };
 
+/**
+ * Window size for forward resynchronisation
+ */
 #define DELAY_BEFORE_RESYNCHRONISATION  15000
 
+/**
+ * Input state description
+ */
 struct state
 {
-  struct input_p  input;
-  uint64_t        count_new;
-  uint64_t        count_old;
-  double          timestamp;
-  double          timestamp_old;
-  int8_t          signal_new;
-  int8_t          signal_old;
-  uint64_t        desynchronization_drop_internal;
-  uint64_t        desynchronization_drop_external;
-  uint64_t        desynchronization_resync;
-  uint64_t        resynchronisation_counter;
-  double          resynchronisation_min;
+  struct input_p  input;                           //!< Input description
+  uint64_t        count_new;                       //!< Counter of the last received packet
+  uint64_t        count_old;                       //!< Counter of the previous received packet
+  double          timestamp;                       //!< Timestamp of the last received packet
+  double          timestamp_old;                   //!< Timestamp of the previous received packet
+  int8_t          signal_new;                      //!< Signal strength of the last received packet
+  int8_t          signal_old;                      //!< Signal strength of the previous received packet
+  uint64_t        desynchronization_drop_internal; //!< Number of packet dropped because of an internal desynchronization (Packet too late compared to its estimated arrive time)
+  uint64_t        desynchronization_drop_external; //!< Number of packet dropped because of an externaldesynchronization (Packet too late compared to other streams' estimated arrive time)
+  uint64_t        desynchronization_resync;        //!< Number of global resynchronisation
+  uint64_t        resynchronisation_counter;       //!< Number of packets that were successively late just before the current packet
+  double          resynchronisation_min;           //!< Minimum lateness of packets that were successively late just before the current packet
 };
 
+/**
+ * States stored during a first run
+ */
 struct first_run
 {
-  uint32_t       histo;
-  long double signal_m;
-  long double signal_a;
-  long double signal_b;
-  long double signal_e;
-  uint64_t  signal_m_c;
-  uint64_t signal_ab_c;
-  uint64_t  signal_e_c;
-  uint64_t signal_strengh[UINT8_MAX + 1];
-  struct array_list_u64 *bursts;
+  uint32_t       histo;                   //!< Past 'k' events (receive/loose packet)
+  long double signal_m;                   //!< Sum of the signal strength of received packet
+  long double signal_a;                   //!< Sum of the signal strength of packet received just after a loss
+  long double signal_b;                   //!< Sum of the signal strength of packet received just before a loss
+  long double signal_e;                   //!< Sum of the signal strength of packets of the other stream during a loss
+  uint64_t  signal_m_c;                   //!< Number of elements in 'signal_m'
+  uint64_t signal_ab_c;                   //!< Number of elements in 'signal_a' and 'signal_b'
+  uint64_t  signal_e_c;                   //!< Number of elements in 'signal_e'
+  uint64_t signal_strengh[UINT8_MAX + 1]; //!< Occurrences of given signal strength
+  struct array_list_u64 *bursts;          //!< "Array List" of burst lengths
 };
 
+/**
+ * Common and basic statics extracted from the first run
+  */
 struct statistics {
-  uint64_t partial_i[2];
-  uint64_t partial_j[2];
-  uint64_t total;
+  uint64_t partial_i[2]; //!< Probabilty of success/loss over the first channel, independently of the second one
+  uint64_t partial_j[2]; //!< Probabilty of success/loss over the second channel, independently of the first one
+  uint64_t total;        //!< Total number of event seen
 };
 
+/**
+ * States stored during a second run
+ */
 struct second_run
 {
-  void *null;
+  void *null;  //!< Nothing
 };
 
 #ifdef DEBUG
+/**
+ * For debuging purpose on interrupts (ctrl-c), a static pointer to the current states in stored
+ */
 struct state *states_for_interrupt;
 #endif
 
 /* Global cache */
+//! Number of source files
 #define SOURCES 2
 
+/**
+ * Difference of synchronization between the two stream.
+ * For two synchronized packets, we have:
+ * sync_count_diff = (int64_t) (states[0].count_new - states[1].count_new)
+ */
 int64_t sync_count_diff;
+//! Theoretical interval between two packets
 double   interval;
+//! Half of the theoretical interval between two packets
 double   secure_interval;
-
+//! Counter for all the possible states
 uint64_t u64_stats[2][2];
+//! Historically-dependent states counters
 uint64_t *compare_histo;
+//! "Array List" of coordinated burst length
 struct array_list_u64 *coordbursts;
-uint32_t histo_mod;
+//! Number of events to be kept for 'compare_histo'
 int k;
+//! ((uint32_t) 1) << k
+uint32_t histo_mod;
+//! Complete map of signals strength occurences
 uint64_t signals[UINT8_MAX + 1][UINT8_MAX + 1];
-
+//! Structure storing dependency between states
 struct historical_correlation {
-  uint64_t data[4][3];
+  uint64_t data[4][3]; //!< Counter of the event j known i (data[i][j])
 };
+//! Size of the correlation history stored
 size_t long_history_size;
-uint8_t *long_history,
-        *long_history_current;
+//! Circular buffer containing the long_history_size last events
+uint8_t *long_history;
+//! Starting point of the long_history circular buffer
+uint8_t *long_history_current;
+//! History auto-correlation
 struct historical_correlation *histo_corr;
+//! Initialization: only true if the buffer long_history is full
 bool long_history_looped;
 
-/* Output */
+/**
+ * Base output
+ */
 FILE* output;
 
+/**
+ * Read an input line, try to extract the contained data and update the input state description.
+ * Filter source IPv6,
+ * Filter packet too late compared to their espected arrive time,
+ * Filter backward resynchronization
+ * Exit in case of format error
+ * @param in_state Input state description to be updated.
+ * @return EOF: -1, nothing (packet dropped): 0, new information without sync: 1, new information with backward sync: 2, new information with forward sync: 3
+ */
 static ssize_t
 read_input(struct state *in_state)
 {
@@ -139,6 +199,7 @@ read_input(struct state *in_state)
   int tmp;
   double temp_ts, temp_diff;
 
+  /* Read a new line */
   buffer = zread_line(&in_state->input.input, &len);
   if (buffer == NULL) {
     if (len < -1) {
@@ -149,19 +210,21 @@ read_input(struct state *in_state)
   assert(len >= 0);
 
   /* Verify the IP address */
+  /* Extract the IPv6 in string format */
   next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
     printf("Bad input format (no closing ',' for the IP address field : ''%.*s'')\n", len, buffer);
     goto exit;
   }
   *next = '\0';
+  /* Transform into binary representation */
   tmp = inet_pton(AF_INET6, buffer, &ip);
   assert(tmp != -1);
   if (tmp == 0) {
     printf("Invalid IPv6 address '%s'\n", buffer);
     goto exit;
   }
-
+  /* Try to match the IP */
   if (memcmp(&ip, &in_state->input.src, sizeof(struct in6_addr)) != 0) {
     if (in_state->input.fixed_ip) {
       return 0;
@@ -173,6 +236,7 @@ read_input(struct state *in_state)
       goto exit;
     }
   }
+  /* Next entry */
   ++next;
   len -= (next - buffer);
   buffer = next;
@@ -189,24 +253,28 @@ read_input(struct state *in_state)
   buffer = next;
 
   /* Store the signal strengh */
+  /* Extract the signal in string format */
   assert(len >= 0);
   next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
     printf("Bad input format (no closing ',' for the signal field : ''%.*s'')\n", len, buffer);
     goto exit;
   }
-  *next = '\0';
+  /* Save previous value */
   in_state->signal_old = in_state->signal_new;
+  /* Transform into binary representation directly in the destination memory */
+  *next = '\0';
   tmp = sscanf(buffer, "%"SCNd8, &in_state->signal_new);
   if (tmp != 1) {
     printf("Bad input format (count isn't a int8: ''%.*s'')\n", len, buffer);
     goto exit;
   }
+  /* Next entry */
   ++next;
   len -= (next - buffer);
   buffer = next;
 
-  /* Skip the signal field */
+  /* Skip the channel field */
   assert(len >= 0);
   next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
@@ -218,6 +286,7 @@ read_input(struct state *in_state)
   buffer = next;
 
   /* Look at the origin timestamp field */
+  /* Extract the origin timestamp in string format */
   assert(len >= 0);
   next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
@@ -225,6 +294,7 @@ read_input(struct state *in_state)
     goto exit;
   }
   if (in_state->input.origin) {
+    /* If we are looking at the origin timestamp, transform into binary representation directly in the destination memory */
     *next = '\0';
     tmp = sscanf(buffer, "%lf", &in_state->timestamp);
     if (tmp != 1) {
@@ -232,34 +302,41 @@ read_input(struct state *in_state)
       goto exit;
     }
   }
+  /* Next entry */
   ++next;
   len -= (next - buffer);
   buffer = next;
 
   /* Read the count field */
+  /* Extract the counter in string format */
   assert(len >= 0);
   next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
     printf("Bad input format (no closing ',' for the sent timestamp field : ''%.*s'')\n", len, buffer);
     goto exit;
   }
-  *next = '\0';
+  /* Save previous value */
   in_state->count_old = in_state->count_new;
+    /* Transform into binary representation directly in the destination memory */
+  *next = '\0';
   tmp = sscanf(buffer, "%"SCNd64, &in_state->count_new);
   if (tmp != 1) {
     printf("Bad input format (count isn't a uint64: ''%.*s'')\n", len, buffer);
     goto exit;
   }
+  /* Verify that the count is strictly increasing */
   if ((in_state->count_new <= in_state->count_old) && (in_state->count_new != 0)) {
     printf("Bad input format (count isn't strictly increasing %"PRIu64" after %"PRIu64")\n", in_state->count_new, in_state->count_old);
     goto exit;
   }
+  /* Next entry */
   ++next;
   len -= (next - buffer);
   buffer = next;
 
-  /* Look at the reception timestamp field */
+  /* Only the reception timestamp should remain */
   if (!in_state->input.origin) {
+    /* If we are not looking at the origin timestamp, transform into binary representation directly in the destination memory */
     tmp = sscanf(buffer, "%lf", &in_state->timestamp);
     if (tmp != 1) {
       printf("Bad input format (reception timestamp isn't a double: ''%.*s'')\n", len, buffer);
@@ -267,13 +344,16 @@ read_input(struct state *in_state)
     }
   }
 
+  /* Compare to the estimated arrive time */
   if (in_state->timestamp_old != 0) {
+    /* Evaluate estimated arrive time based the last one, the theoretical interval and the counter increase */
     temp_ts = in_state->timestamp_old + interval * (double)(in_state->count_new - in_state->count_old);
     if (temp_ts - in_state->timestamp > secure_interval) {
        /* We are correcting this kind of drift at each step, thus this should not happen */
        printf("Algorithmic error: a packet arrived too early (%lf VS %lf : %lf VS %lf)\n", in_state->timestamp, temp_ts, temp_ts - in_state->timestamp, secure_interval);
        goto exit;
     } else if (in_state->timestamp - temp_ts > interval) {
+      /* The packet arrived more than a window after its due time, it has no value, drop it */
       PRINTF("File %s, ", in_state->input.filename);
       PRINTF("packet %"PRIu64" dropped because outside its window (%lf VS %lf)\n", in_state->count_new, in_state->timestamp, temp_ts)
       in_state->signal_new = in_state->signal_old;
@@ -282,6 +362,7 @@ read_input(struct state *in_state)
       return 0;
     } else {
       if (in_state->timestamp <= temp_ts) {
+        /* The packet arrived before we were expecting it, we are late, resynchronization */
         PRINTF("File %s, ", in_state->input.filename);
         PRINTF("resynchronisation @%"PRIu64": %f\n", in_state->count_new,  in_state->timestamp - temp_ts)
         in_state->timestamp_old = in_state->timestamp;
@@ -289,11 +370,13 @@ read_input(struct state *in_state)
         in_state->resynchronisation_min = interval;
         return 2;
       } else {
+        /* The packet was late, update the "successively late" states */
         ++in_state->resynchronisation_counter;
         temp_diff = in_state->timestamp - temp_ts;
         if (temp_diff < in_state->resynchronisation_min) {
           in_state->resynchronisation_min = temp_diff;
         }
+        /* If our window is full, update the estimation */
         if (in_state->resynchronisation_counter > DELAY_BEFORE_RESYNCHRONISATION) {
           PRINTF("File %s, ", in_state->input.filename);
           PRINTF("resynchronisation @%"PRIu64": +%f\n", in_state->count_new,  in_state->resynchronisation_min);
@@ -314,6 +397,13 @@ exit:
   exit(-3);
 }
 
+/**
+ * Read the input until a valid packet is found.
+ * Resynchronize the streams in case of a global desynchronization
+ * @param inc    Input state description to be updated.
+ * @param states Table containing the two different streams
+ * @return EOF: -1, ok: 1
+ */
 static ssize_t
 next_input(struct state *inc, struct state *states)
 {
@@ -382,6 +472,11 @@ next_input(struct state *inc, struct state *states)
   return tmp;
 }
 
+/**
+ * Synchronize the two counters.
+ * Stops as soon as two packets are in the same window
+ * @param states Inputs
+ */
 static void
 synchronize_input(struct state* states)
 {
@@ -392,6 +487,7 @@ synchronize_input(struct state* states)
 # error "This function was written only for 2 sources"
 #endif
 
+  /* Initialization: read one line from both input*/
   tmp = next_input(states, NULL);
   if (tmp < 0) {
     printf("End of file before any input for input file 0 (0-1) ...\n");
@@ -402,6 +498,7 @@ synchronize_input(struct state* states)
     printf("End of file before any input for input file 1 (0-1)...\n");
     exit(-4);
   }
+  /* Read packets in the stream with the older timestamp until synchronization */
   while (1) {
     ts = states[0].timestamp - states[1].timestamp;
     if (ts > secure_interval) {
@@ -420,6 +517,7 @@ synchronize_input(struct state* states)
       break;
     }
   }
+  /* Set the synchronization related states */
   sync_count_diff = (int64_t) (states[0].count_new - states[1].count_new);
   states[0].count_old = states[0].count_new;
   states[0].timestamp_old = states[0].timestamp;
@@ -427,6 +525,12 @@ synchronize_input(struct state* states)
   states[1].timestamp_old = states[1].timestamp;
 }
 
+/**
+ * Read the input until a valid packet is found, handles file changes in case of rotated files.
+ * @param in_state Input state description to be updated.
+ * @param states   Table containing the two different streams
+ * @return EOF: -1, ok: 1, Zlib error : < 0
+ */
 static int
 next_line_or_file(struct state *in_state, struct state *states)
 {
@@ -435,11 +539,13 @@ next_line_or_file(struct state *in_state, struct state *states)
   int ret;
   FILE *src;
 
+  /* Try to read directly */
   tmp = next_input(in_state, states);
   if (tmp != -1) {
     return tmp;
   }
 
+  /* If we are not using rotated files : EOF */
   if (in_state->input.filename_count_start < 0) {
     return -1;
   }
@@ -448,6 +554,7 @@ next_line_or_file(struct state *in_state, struct state *states)
     return -1;
   }
 
+  /* Update the filename */
   len = strlen(in_state->input.filename);
   assert(len > 7);
   snprintf(in_state->input.filename + (len - 6), 7, "%03i.gz", in_state->input.filename_count);
@@ -460,6 +567,7 @@ next_line_or_file(struct state *in_state, struct state *states)
     return -1;
   }
 
+  /* Close and reopen zlib encoding stream */
   zread_end(&in_state->input.input);
   memset(&in_state->input.input, 0, sizeof(struct zutil_read));
   ret = zinit_read(&in_state->input.input, src);
@@ -468,18 +576,29 @@ next_line_or_file(struct state *in_state, struct state *states)
     return ret;
   }
   PRINTF("Success\n");
+  /* Use recursive call to find a valid packet */
   return next_line_or_file(in_state, states);
 }
 
+/**
+ * Update the history autocorrelation.
+ * @param new_state State express in binary :
+ *  0b00 means 0 0
+ *  0b10 means 1 0
+ *  0b01 means 0 1
+ *  0b11 means 1 1
+ */
 inline static void
 temporal_dependence(uint8_t new_state)
 {
   uint8_t *current, *end;
   struct historical_correlation *histo_current;
 
+  /* Only try to store if we already have a full buffer and it's not an unisteresting input */
   if (long_history_looped && (new_state != 0b11)) {
     histo_current = histo_corr;
 
+    /* First part: long_history_current + 1 -> long_history + long_history_size */
     end = long_history + long_history_size;
     current = long_history_current + 1;
 
@@ -492,6 +611,7 @@ temporal_dependence(uint8_t new_state)
       ++current;
     }
 
+    /* Second part: long_history -> long_history_current + 1 */
     current = long_history;
     end = long_history_current + 1;
 
@@ -502,8 +622,8 @@ temporal_dependence(uint8_t new_state)
     }
   }
 
+  /* Store state and update current position */
   *long_history_current = new_state;
-
   --long_history_current;
   if (long_history_current < long_history) {
     long_history_looped = true;
@@ -511,6 +631,9 @@ temporal_dependence(uint8_t new_state)
   }
 }
 
+/**
+ * Add a state in two part (i,j) in the first run
+ */
 #define ADD_VAL(a,b)                                          \
   if (compare_histo != NULL) {                                \
     data[0].histo = ((data[0].histo << 1) + a) % histo_mod;   \
@@ -519,12 +642,17 @@ temporal_dependence(uint8_t new_state)
   }                                                           \
   ++u64_stats[a][b];
 
+/**
+ * Add a state in one part 0bij in the first run
+ */
 #define ADD_VAR_ONE(a)         \
   if (long_history != NULL) {  \
     temporal_dependence(a);    \
   }
 
-
+/**
+ * Update the burst counting
+ */
 #define ADD_BURST(dest,size)                 \
   if (dest != NULL) {                        \
     ({                                       \
@@ -535,6 +663,9 @@ temporal_dependence(uint8_t new_state)
     });                                      \
   }
 
+/**
+ * Read a line, update associated states
+ */
 #define READ_LINE(pos)                                                       \
   tmp = next_line_or_file(states + pos, states);                             \
   if (tmp < 0) {                                                             \
@@ -548,6 +679,14 @@ temporal_dependence(uint8_t new_state)
   }                                                                          \
   data[pos].signal_strengh[(uint8_t)states[pos].signal_new] += 1;
 
+/**
+ * Read on step the available input and update the stats of the first run.
+ * @param out    Output file for translation into 0's and 1's
+ * @param print  Do we print the translation into 0's and 1's ?
+ * @param data   First run related states
+ * @param states Input description
+ * @return OK: >= 0, EOF: -1, ERROR: < -1
+ */
 static int
 first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
 {
@@ -556,6 +695,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
   uint64_t i;
   double   ts;
 
+  /* Calculate the ages */
   assert(states[0].count_new >= states[0].count_old);
   age[0] = states[0].count_new - states[0].count_old;
   assert(states[1].count_new >= states[1].count_old);
@@ -563,9 +703,12 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
 
   assert(((int64_t)(states[0].count_old - states[1].count_old)) == sync_count_diff);
   if (age[0] == age[1]) {
+    /* We have synchrone packets, verify that they are really synchrone */
     ts = states[0].timestamp - states[1].timestamp;
     if (fabs(ts) > interval) {
+      /* Not good: outside the windows */
       if (states[0].timestamp_old - states[1].timestamp > secure_interval || states[1].timestamp - states[0].timestamp_old > interval) {
+        /* External desynchro : 1 was too late compared to the expected date of 0 */
         ++states[1].desynchronization_drop_external;
         PRINTF("File %s, ", states[1].input.filename);
         PRINTF("packet %"PRIu64" dropped because outside the global window (%lf (ref %lf) VS ref %lf)\n", states[1].count_new, states[1].timestamp, states[1].timestamp_old, states[0].timestamp_old);
@@ -574,6 +717,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
         states[1].count_new = states[1].count_old;
         return next_line_or_file(states + 1, states);
       } else if (states[1].timestamp_old - states[0].timestamp > secure_interval || states[0].timestamp - states[1].timestamp_old > interval) {
+        /* External desynchro : 0 was too late compared to the expected date of 1 */
         ++states[0].desynchronization_drop_external;
         PRINTF("File %s, ", states[0].input.filename);
         PRINTF("packet %"PRIu64" dropped because outside the global window (%lf (ref %lf) VS ref %lf)\n", states[0].count_new, states[0].timestamp, states[0].timestamp_old, states[1].timestamp_old);
@@ -582,6 +726,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
         states[0].count_new = states[0].count_old;
         return next_line_or_file(states, states);
       } else {
+        /* Real big desynchronization that wasn't corrected by the algorithm */
         printf("Desynchronisation between %"PRIu64" and %"PRIu64"\n", states[0].count_new, states[1].count_new);
         printf("current: %lf - %lf -> %lf (VS %lf)\n", states[0].timestamp, states[1].timestamp, fabs(ts), interval);
         printf("ref:     %lf - %lf  \n", states[0].timestamp_old, states[1].timestamp_old);
@@ -664,8 +809,14 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
 #undef ADD_VAL
 #undef READ_LINE
 
+/**
+ * Read on step the available input and update the stats of the first run.
+ * @param data   Second run related states
+ * @param states Input description
+ * @return OK: >= 0, EOF: -1, ERROR: < -1
+ */
 static int
-second_pass(FILE* out, bool print, struct second_run *data, struct state *states)
+second_pass(struct second_run *data, struct state *states)
 {
   ssize_t tmp;
   uint64_t age[2];
@@ -717,12 +868,28 @@ second_pass(FILE* out, bool print, struct second_run *data, struct state *states
   }
 }
 
+/**
+ * Helper function for evaluating the Likelihood Ratio Statistic for independence test
+ * @param nij n_{i,j}
+ * @param ni  sum_{j=0}^{1} n_{i,j}
+ * @param nj  sum_{i=0}^{1} n_{i,j}
+ * @param n   sum_{j=0}^{1} sum_{i=0}^{1} n_{i,j}
+ * @return   nij * log ((n * nij)/(ni * nj))
+ */
 static long double
 lrs_part(uint64_t nij, uint64_t ni, uint64_t nj, uint64_t n)
 {
   return ((long double) nij) * logl((((long double) n) * ((long double) nij)) / (((long double) ni) * ((long double) nj)));
 }
 
+/**
+ * Helper function for evaluating the Pearson Chi-squared Statistic for independence test
+ * @param nij n_{i,j}
+ * @param ni  sum_{j=0}^{1} n_{i,j}
+ * @param nj  sum_{i=0}^{1} n_{i,j}
+ * @param n   sum_{j=0}^{1} sum_{i=0}^{1} n_{i,j}
+ * @return  (nij - (ni * nj / n))² / (ni * nj / n)
+ */
 static long double
 pcs_part(uint64_t nij, uint64_t ni, uint64_t nj, uint64_t n)
 {
@@ -732,6 +899,11 @@ pcs_part(uint64_t nij, uint64_t ni, uint64_t nj, uint64_t n)
   return square * square / temp;
 }
 
+/**
+ * Evaluate global and simple statistics
+ * @param data Direct statistics from the first run
+ * @return Evaluated simple stats
+ */
 static struct statistics*
 eval_stats(struct first_run *data)
 {
@@ -755,6 +927,10 @@ eval_stats(struct first_run *data)
   return ret;
 }
 
+/**
+ * Display on stdout desynchronization information.
+ * @param states Direct statistics from a run
+ */
 static void
 print_desynchronisation_stats(struct state *states)
 {
@@ -764,6 +940,11 @@ print_desynchronisation_stats(struct state *states)
   printf("Resynchronisations:  %"PRIu64" and %"PRIu64"\n", states[0].desynchronization_resync, states[1].desynchronization_resync);
 }
 
+/**
+ * Diplay more advanced statistics.
+ * @param data Direct statistics from the first run
+ * @param stats Evaluated simple stats
+ */
 static void
 print_stats(struct first_run *data, struct statistics* stats)
 {
@@ -856,6 +1037,11 @@ print_stats(struct first_run *data, struct statistics* stats)
   printf("Pearson correlation : %Lf\n", covar / stats->total / (stand_dev[0] * stand_dev[1]));
 }
 
+/**
+ * Print signal related statistics
+ * @param signal_output FILE used for the output
+ * @param data Direct statistics from the first run
+ */
 static void
 print_signal_stats(FILE *signal_output, struct first_run *data)
 {
@@ -905,6 +1091,30 @@ print_signal_stats(FILE *signal_output, struct first_run *data)
   fprintf(signal_output, "%"PRIu64"]\n", signals[UINT8_MAX][UINT8_MAX]);
 }
 
+/**
+ * Helper macro for print_histo: remplace the value with -1 if too big
+ */
+#define LIMIT_MAX_VAL(x) ({ uint64_t val_ = x; (val_ > max) ? (-1) : ((int64_t)val_); })
+
+/**
+ * Helper macro for print_histo: Evaluate distribution output if the distribution were independant
+ */
+#define INDEP(i,j)  ((uint64_t)(((long double)(independant[i] * independant[j + histo_mod])) / total))
+
+/**
+ * Helper macro for print_histo: Difference between the independant distribution and the measured one
+ */
+#define INDEP_DIFF(i,j)  ((int64_t)(compare_histo[((i) * histo_mod) + j] - INDEP(i,j)))
+
+/**
+ * Helper macro for print_histo: Emulate a 'signed log': log(1 + x * signe(x))
+ */
+#define SIGNED_LOG(a) ({ int64_t a_ = a; a_ >= 0 ? logl(1 + (long double)a_) : -logl(-(long double)a_); })
+
+/**
+ * Print historical autocorrelation statistics
+ * @param histo_output FILE used for the output
+ */
 static void
 print_histo(FILE *histo_output)
 {
@@ -939,7 +1149,6 @@ print_histo(FILE *histo_output)
 
   max = 10 * compare_histo[((histo_mod - 1)/2 * (histo_mod + 1))];
   fprintf(histo_output, "Limit at %"PRIi64"\n", max);
-#define LIMIT_MAX_VAL(x) ({ uint64_t val_ = x; (val_ > max) ? (-1) : ((int64_t)val_); })
   fprintf(histo_output, "[");
   for (i = 0; i < histo_mod - 1; ++i) {
     for (j = 0; j < histo_mod - 1; ++j) {
@@ -951,7 +1160,6 @@ print_histo(FILE *histo_output)
     fprintf(histo_output, "%"PRIi64" ", LIMIT_MAX_VAL(compare_histo[((histo_mod - 1) * histo_mod) + j]));
   }
   fprintf(histo_output, "%"PRIi64"]\n", LIMIT_MAX_VAL(compare_histo[((histo_mod - 1) * histo_mod) + histo_mod - 1]));
-#undef LIMIT_MAX_VAL
 
   fprintf(histo_output, "Trying to visualize difference with independant variables:\n");
   assert((k >= 0) && (k <= 15));
@@ -966,7 +1174,6 @@ print_histo(FILE *histo_output)
   }
   fprintf(histo_output, " Independant:\n");
 
-#define INDEP(i,j)  ((uint64_t)(((long double)(independant[i] * independant[j + histo_mod])) / total))
   fprintf(histo_output, "  [");
   for (i = 0; i < histo_mod - 1; ++i) {
     for (j = 0; j < histo_mod - 1; ++j) {
@@ -980,7 +1187,6 @@ print_histo(FILE *histo_output)
   fprintf(histo_output, "%"PRIi64"]\n", INDEP(histo_mod - 1, histo_mod - 1));
 
   fprintf(histo_output, " Diff:\n");
-#define INDEP_DIFF(i,j)  ((int64_t)(compare_histo[((i) * histo_mod) + j] - INDEP(i,j)))
   fprintf(histo_output, "  [");
   for (i = 0; i < histo_mod - 1; ++i) {
     for (j = 0; j < histo_mod - 1; ++j) {
@@ -994,7 +1200,6 @@ print_histo(FILE *histo_output)
   fprintf(histo_output, "%"PRIi64"]\n", INDEP_DIFF(histo_mod - 1, histo_mod - 1));
 
   fprintf(histo_output, " Log diff:\n");
-#define SIGNED_LOG(a) ({ int64_t a_ = a; a_ >= 0 ? logl(1 + (long double)a_) : -logl(-(long double)a_); })
   fprintf(histo_output, "  [");
   for (i = 0; i < histo_mod - 1; ++i) {
     for (j = 0; j < histo_mod - 1; ++j) {
@@ -1007,32 +1212,36 @@ print_histo(FILE *histo_output)
   }
   fprintf(histo_output, "%Lf]\n", SIGNED_LOG(INDEP_DIFF(histo_mod - 1, histo_mod - 1)));
 
+  free(independant);
+}
+#undef LIMIT_MAX_VAL
 #undef SIGNED_LOG
 #undef INDEP_DIFF
 #undef INDEP
-  free(independant);
-}
 
-static void
-print_histo_correlation(FILE *histo_corr_file, struct statistics* stats)
-{
-  size_t i;
-  long double temp;
-
+/**
+ * Print_histo_correlation helper: Print list separator
+ */
 #define PRINT_SEP                 \
   fprintf(histo_corr_file, ", ");
 
+/**
+ * Print_histo_correlation helper: Print axis "distribution"
+ */
 #define PRINT_AXIS                                          \
   fprintf(histo_corr_file, "[1:1:%zu]", long_history_size);
 
+/**
+ * Print_histo_correlation helper: Start a named plot in a new figure
+ */
 #define PRINT_PLOT_START(a,b)                             \
   fprintf(histo_corr_file, "%% %s:\n", a);                \
   fprintf(histo_corr_file, "figure('Name','%s');\n", b);  \
   fprintf(histo_corr_file, "plot(");
 
-#define PRINT_PLOT_LINE_INFO(a)                        \
-  fprintf(histo_corr_file, ", '%s'", a);
-
+/**
+ * Print_histo_correlation helper: Add a constant reference line to a plot
+ */
 #define PRINT_REFERENCE(a,b)                   \
   temp = a;                                    \
   PRINT_AXIS                                   \
@@ -1040,27 +1249,22 @@ print_histo_correlation(FILE *histo_corr_file, struct statistics* stats)
   for (i = 0; i < long_history_size - 1; ++i)  \
     fprintf(histo_corr_file, "%Lf ", temp);    \
   fprintf(histo_corr_file, "%Lf]", temp);      \
-  PRINT_PLOT_LINE_INFO(b)
-//"
+  fprintf(histo_corr_file, ", '%s'", b);
 
+/**
+ * Print_histo_correlation helper: Print direct data
+ */
 #define PRINT_CURVE(a,b,c,d)                                                                            \
   PRINT_AXIS                                                                                            \
   fprintf(histo_corr_file, ", [");                                                                      \
   for (i = 0; i < long_history_size - 1; ++i)                                                           \
     fprintf(histo_corr_file, "%Lf ", histo_corr[i].data[a][b] / ((long double) c));                     \
   fprintf(histo_corr_file, "%Lf]", histo_corr[long_history_size - 1].data[a][b] / ((long double) c));   \
-  PRINT_PLOT_LINE_INFO(d)
-//"
+  fprintf(histo_corr_file, ", '%s'", d);
 
-#define PRINT_CURVE_SUM(a,b,c,d)                                                                                                                          \
-  PRINT_AXIS                                                                                                                                              \
-  fprintf(histo_corr_file, ", [");                                                                                                                        \
-  for (i = 0; i < long_history_size - 1; ++i)                                                                                                             \
-    fprintf(histo_corr_file, "%Lf ", (histo_corr[i].data[a][b] + histo_corr[i].data[a][0b00]) / ((long double) c));                                       \
-  fprintf(histo_corr_file, "%Lf]", (histo_corr[long_history_size - 1].data[a][b] + histo_corr[long_history_size - 1].data[a][0b00]) / ((long double) c)); \
-  PRINT_PLOT_LINE_INFO(d)
-//"
-
+/**
+ * Print_histo_correlation helper: Print summaries
+ */
 #define PRINT_CURVE_DOUBLE_SUM(a,b,c,d)                                                                                                                                                              \
   PRINT_AXIS                                                                                                                                                                                         \
   fprintf(histo_corr_file, ", [");                                                                                                                                                                   \
@@ -1068,13 +1272,26 @@ print_histo_correlation(FILE *histo_corr_file, struct statistics* stats)
     fprintf(histo_corr_file, "%Lf ", (histo_corr[i].data[a][b] + histo_corr[i].data[a][0b00] + histo_corr[i].data[0b00][b] + histo_corr[i].data[0b00][0b00]) / ((long double) c + u64_stats[0][0])); \
   i = long_history_size - 1;                                                                                                                                                                         \
   fprintf(histo_corr_file, "%Lf]", (histo_corr[i].data[a][b] + histo_corr[i].data[a][0b00] + histo_corr[i].data[0b00][b] + histo_corr[i].data[0b00][0b00]) / ((long double) c + u64_stats[0][0]));   \
-  PRINT_PLOT_LINE_INFO(d)
-//"
+  fprintf(histo_corr_file, ", '%s'", d);
 
+/**
+ * Print_histo_correlation helper: Close a plot, add legend.
+ */
 #define PRINT_PLOT_END(a)                       \
   fprintf(histo_corr_file, ");\n");             \
   fprintf(histo_corr_file, "legend(%s);\n", a); \
   fprintf(histo_corr_file, "\n");
+
+/**
+ * Diplay more advanced statistics.
+ * @param histo_corr_file FILE used for the output
+ * @param stats Evaluated simple stats
+ */
+static void
+print_histo_correlation(FILE *histo_corr_file, struct statistics* stats)
+{
+  size_t i;
+  long double temp;
 
   PRINT_PLOT_START("green/blue: 01|01; magenta/red: 10|10", "Autocorelation (First order loss)")
   PRINT_REFERENCE(u64_stats[0][1] / ((long double)stats->total), "b")
@@ -1120,6 +1337,8 @@ print_histo_correlation(FILE *histo_corr_file, struct statistics* stats)
   PRINT_CURVE_DOUBLE_SUM(0b10, 0b10, u64_stats[1][0], "m")
   PRINT_PLOT_END("'ref 0.','0.|0.','ref .0','.0|.0'")
 
+}
+
 #undef PRINT_PLOT_END
 #undef PRINT_CURVE_DOUBLE_SUM
 #undef PRINT_CURVE
@@ -1127,8 +1346,12 @@ print_histo_correlation(FILE *histo_corr_file, struct statistics* stats)
 #undef PRINT_PLOT_START
 #undef PRINT_AXIS
 #undef PRINT_SEP
-}
 
+/**
+ * Print a short howto and exit.
+ * @param error Execution code to return.
+ * @param name  Name under which this program was called.
+ */
 static void
 usage(int error, char *name)
 {
@@ -1151,6 +1374,9 @@ usage(int error, char *name)
   exit(error);
 }
 
+/**
+ * Long options used by getopt_long; see 'usage' for more detail.
+ */
 static const struct option long_options[] = {
   {"help",              no_argument, 0,  'h' },
   {"output",      required_argument, 0,  'o' },
@@ -1168,6 +1394,10 @@ static const struct option long_options[] = {
 };
 
 #ifdef DEBUG
+/**
+ * Callback in case of captured interrupt.
+ * Print current state information
+ */
 static void
 interrupt(int sig)
 {
@@ -1186,6 +1416,12 @@ interrupt(int sig)
 }
 #endif
 
+/**
+ * Main function for the extract tool.
+ * @param argc Argument Count
+ * @param argv Argument Vector
+ * @return Execution return code
+ */
 int
 main(int argc, char *argv[])
 {
@@ -1601,7 +1837,7 @@ PRINTF("Debug enabled\n")
 
     synchronize_input(states);
     do {
-      sret = second_pass(output, print, second, states);
+      sret = second_pass(second, states);
     } while (sret >= 0);
 
     if (states[0].input.input.input != NULL) {
