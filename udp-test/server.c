@@ -248,12 +248,12 @@ static void down(int sig)
 }
 
 /* Default Values */
-#define DEFAULT_FILE stdout
-#define DEFAULT_PORT 10101
-#define DEFAULT_ENCODE 7
-#define DEFAULT_MULTICAST "ff02::1"
-#define DEFAULT_INTERFACE "wlan0"
-#define DEFAULT_RELOAD 0
+#define SERVER_DEFAULT_FILE stdout
+#define SERVER_DEFAULT_PORT 10101
+#define SERVER_DEFAULT_ENCODE 7
+#define SERVER_DEFAULT_MULTICAST "ff02::1"
+#define SERVER_DEFAULT_INTERFACE "wlan0"
+#define SERVER_DEFAULT_RELOAD 0
 
 static void usage(int err, char *name)
 {
@@ -264,10 +264,10 @@ static void usage(int err, char *name)
   printf(" -o, --ouput  <file>  Specify the output file (default: standard output)\n");
   printf(" -r, --rand           Randomize the output file by adding a random number\n");
   printf("     --reload <secs>  Change the output file every <secs> seconds (disabled if <secs> <= 0, disabled by default)\n");
-  printf(" -l, --level  [0-9]   Specify the level of the output compression (default : %i)\n", DEFAULT_ENCODE);
-  printf(" -p, --port   <port>  Specify the port to listen on (default: %"PRIu16")\n", DEFAULT_PORT);
-  printf(" -b           <addr>  Specify the address used for multicast (default : %s)\n", DEFAULT_MULTICAST);
-  printf(" -i      <interface>  Specify the interface to bind on (default : %s)\n", DEFAULT_INTERFACE);
+  printf(" -l, --level  [0-9]   Specify the level of the output compression (default : %i)\n", SERVER_DEFAULT_ENCODE);
+  printf(" -p, --port   <port>  Specify the port to listen on (default: %"PRIu16")\n", SERVER_DEFAULT_PORT);
+  printf(" -b           <addr>  Specify the address used for multicast (default : %s)\n", SERVER_DEFAULT_MULTICAST);
+  printf(" -i      <interface>  Specify the interface to bind on (default : %s)\n", SERVER_DEFAULT_INTERFACE);
 
   exit(err);
 }
@@ -285,18 +285,18 @@ static const struct option long_options[] = {
 int main(int argc, char *argv[]) {
   int opt;
   int randi = 0;
-  int encode = DEFAULT_ENCODE;
+  int encode = SERVER_DEFAULT_ENCODE;
   char *filename = NULL;
   char *filetemp;
-  in_port_t port = DEFAULT_PORT;
-  FILE *dest = DEFAULT_FILE;
+  in_port_t port = SERVER_DEFAULT_PORT;
+  FILE *dest = SERVER_DEFAULT_FILE;
   char *addr_s = NULL;
   const char *interface = NULL;
   uint8_t randomized;
   FILE *randsrc;
   struct in6_addr multicast;
   struct ipv6_mreq mreq;
-  float  reload_timer = DEFAULT_RELOAD;
+  float  reload_timer = SERVER_DEFAULT_RELOAD;
 
   while((opt = getopt_long(argc, argv, "hro:p:b:i:", long_options, NULL)) != -1) {
     switch(opt) {
@@ -307,7 +307,7 @@ int main(int argc, char *argv[]) {
         randi = 1;
         break;
       case 'z':
-        if (reload_timer != DEFAULT_RELOAD) {
+        if (reload_timer != SERVER_DEFAULT_RELOAD) {
           usage(1, argv[0]);
         }
         sscanf(optarg, "%f", &reload_timer);
@@ -316,7 +316,7 @@ int main(int argc, char *argv[]) {
         filename = optarg;
         break;
       case 'l':
-        if (encode != DEFAULT_ENCODE) {
+        if (encode != SERVER_DEFAULT_ENCODE) {
           usage(1, argv[0]);
         }
         sscanf(optarg, "%i", &encode);
@@ -325,7 +325,7 @@ int main(int argc, char *argv[]) {
         }
         break;
       case 'm':
-        if (port != DEFAULT_PORT) {
+        if (port != SERVER_DEFAULT_PORT) {
           usage(1, argv[0]);
         }
         sscanf(optarg, "%"SCNu16, &port);
@@ -405,7 +405,7 @@ int main(int argc, char *argv[]) {
       return -1;
     }
   } else {
-     int temp = inet_pton(AF_INET6, DEFAULT_MULTICAST, &multicast);
+     int temp = inet_pton(AF_INET6, SERVER_DEFAULT_MULTICAST, &multicast);
      assert(temp == 1);
   }
 
@@ -417,11 +417,11 @@ int main(int argc, char *argv[]) {
       return -1;
     }
   } else {
-    if ((mreq.ipv6mr_interface = if_nametoindex(DEFAULT_INTERFACE)) == 0) {
+    if ((mreq.ipv6mr_interface = if_nametoindex(SERVER_DEFAULT_INTERFACE)) == 0) {
       printf("Error, the default interface doesn't exist, please specify one using -i\n");
       return -1;
     }
-    interface = DEFAULT_INTERFACE;
+    interface = SERVER_DEFAULT_INTERFACE;
   }
 
   event_loop = ev_default_loop (EVFLAG_AUTO);

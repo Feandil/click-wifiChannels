@@ -130,14 +130,14 @@ static void down(int sig)
 }
 
 /* Default Values */
-#define DEFAULT_FILE stdout
-#define DEFAULT_PORT 10101
-#define DEFAULT_ADDRESS "::1"
-#define DEFAULT_TIME_SECOND 0
-#define DEFAULT_TIME_MILLISECOND 20
-#define DEFAULT_COUNT 0
-#define DEFAULT_SIZE 900
-#define DEFAULT_TRAIN 1
+#define CLIENT_DEFAULT_FILE stdout
+#define CLIENT_DEFAULT_PORT 10101
+#define CLIENT_DEFAULT_ADDRESS "::1"
+#define CLIENT_DEFAULT_TIME_SECOND 0
+#define CLIENT_DEFAULT_TIME_MILLISECOND 20
+#define CLIENT_DEFAULT_COUNT 0
+#define CLIENT_DEFAULT_SIZE 900
+#define CLIENT_DEFAULT_TRAIN 1
 
 static void usage(int err, char *name)
 {
@@ -145,14 +145,14 @@ static void usage(int err, char *name)
   printf("Usage: %s [OPTIONS]\n", name);
   printf("Options:\n");
   printf(" -h, --help           Print this ...\n");
-  printf(" -d, --dest   <addr>  Specify the destination address (default: %s)\n", DEFAULT_ADDRESS);
-  printf(" -p, --port   <port>  Specify the destination port (default: %"PRIu16")\n", DEFAULT_PORT);
-  printf(" -s, --sec    <sec>   Specify the interval in second between two trains of packets (default: %i)\n", DEFAULT_TIME_SECOND);
-  printf(" -m, --msec   <msec>  Specify the interval in millisecond between two trains of packets (default: %i)\n", DEFAULT_TIME_MILLISECOND);
-  printf(" -c, --count  <uint>  Specify the starting count of the outgoing packets (default: %i)\n", DEFAULT_COUNT);
-  printf(" -l, --size   <size>  Specify the size of outgoing packets (default: %i)\n", DEFAULT_SIZE);
+  printf(" -d, --dest   <addr>  Specify the destination address (default: %s)\n", CLIENT_DEFAULT_ADDRESS);
+  printf(" -p, --port   <port>  Specify the destination port (default: %"PRIu16")\n", CLIENT_DEFAULT_PORT);
+  printf(" -s, --sec    <sec>   Specify the interval in second between two trains of packets (default: %i)\n", CLIENT_DEFAULT_TIME_SECOND);
+  printf(" -m, --msec   <msec>  Specify the interval in millisecond between two trains of packets (default: %i)\n", CLIENT_DEFAULT_TIME_MILLISECOND);
+  printf(" -c, --count  <uint>  Specify the starting count of the outgoing packets (default: %i)\n", CLIENT_DEFAULT_COUNT);
+  printf(" -l, --size   <size>  Specify the size of outgoing packets (default: %i)\n", CLIENT_DEFAULT_SIZE);
   printf(" -i, --bind   <name>  Specify the interface to bind one (default: no bind)\n");
-  printf(" -t, --train  <size>  Send trains of <size> packets every sending event (default: %i)\n", DEFAULT_TRAIN);
+  printf(" -t, --train  <size>  Send trains of <size> packets every sending event (default: %i)\n", CLIENT_DEFAULT_TRAIN);
   exit(err);
 }
 
@@ -172,15 +172,15 @@ int main(int argc, char *argv[]) {
   int opt;
   char *addr_s = NULL;
   char *interface = NULL;
-  in_port_t port = DEFAULT_PORT;
+  in_port_t port = CLIENT_DEFAULT_PORT;
   struct in6_addr addr = IN6ADDR_LOOPBACK_INIT;
   struct timeval delay;
-  delay.tv_sec = DEFAULT_TIME_SECOND;
-  delay.tv_usec = DEFAULT_TIME_MILLISECOND;
-  uint64_t count = DEFAULT_COUNT;
-  int size = DEFAULT_SIZE;
+  delay.tv_sec = CLIENT_DEFAULT_TIME_SECOND;
+  delay.tv_usec = CLIENT_DEFAULT_TIME_MILLISECOND;
+  uint64_t count = CLIENT_DEFAULT_COUNT;
+  int size = CLIENT_DEFAULT_SIZE;
   uint32_t scope = 0;
-  int trains = DEFAULT_TRAIN;
+  int trains = CLIENT_DEFAULT_TRAIN;
 
   while((opt = getopt_long(argc, argv, "hd:p:s:m:c:l:i:t:", long_options, NULL)) != -1) {
     switch(opt) {
@@ -191,31 +191,31 @@ int main(int argc, char *argv[]) {
         addr_s = optarg;
         break;
       case 'p':
-        if (port != DEFAULT_PORT) {
+        if (port != CLIENT_DEFAULT_PORT) {
           usage(1, argv[0]);
         }
         sscanf(optarg, "%"SCNu16, &port);
         break;
       case 's':
-        if (delay.tv_sec != DEFAULT_TIME_SECOND) {
+        if (delay.tv_sec != CLIENT_DEFAULT_TIME_SECOND) {
           usage(1, argv[0]);
         }
         sscanf(optarg, "%ld", &delay.tv_sec);
         break;
       case 'm':
-        if (delay.tv_usec != DEFAULT_TIME_MILLISECOND) {
+        if (delay.tv_usec != CLIENT_DEFAULT_TIME_MILLISECOND) {
           usage(1, argv[0]);
         }
         sscanf(optarg, "%li", &delay.tv_usec);
         break;
       case 'c':
-        if (count != DEFAULT_COUNT) {
+        if (count != CLIENT_DEFAULT_COUNT) {
           usage(1, argv[0]);
         }
         sscanf(optarg, "%"SCNu64, &count);
         break;
       case 'l':
-        if (size != DEFAULT_SIZE) {
+        if (size != CLIENT_DEFAULT_SIZE) {
           usage(1, argv[0]);
         }
         sscanf(optarg, "%i", &size);
@@ -224,7 +224,7 @@ int main(int argc, char *argv[]) {
         interface = optarg;
         break;
       case 't':
-        if (trains != DEFAULT_TRAIN) {
+        if (trains != CLIENT_DEFAULT_TRAIN) {
           usage(1, argv[0]);
         }
         sscanf(optarg, "%i", &trains);

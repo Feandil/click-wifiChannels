@@ -600,12 +600,12 @@ down(int sig)
 }
 
 /* Default Values */
-#define DEFAULT_PORT 10102
-#define DEFAULT_ADDRESS "ff02::2"
-#define DEFAULT_INTERFACE "wlan0"
-#define DEFAULT_TIME_SECOND 0
-#define DEFAULT_TIME_MILLISECOND 200
-#define DEFAULT_SIZE 900
+#define EVALLINK_DEFAULT_PORT 10102
+#define EVALLINK_DEFAULT_ADDRESS "ff02::2"
+#define EVALLINK_DEFAULT_INTERFACE "wlan0"
+#define EVALLINK_DEFAULT_TIME_SECOND 0
+#define EVALLINK_DEFAULT_TIME_MILLISECOND 200
+#define EVALLINK_DEFAULT_SIZE 900
 
 /**
  * Print a short howto and exit.
@@ -620,12 +620,12 @@ static void usage(int err, char *name)
   printf(" -h, --help           Print this ...\n");
   printf(" -d, --daemon         Launch this program without any output (no ncurses)\n");
   printf(" -e, --slave          Do not send any packet, supposed to be used when a daemon is running\n");
-  printf(" -a, --addr   <addr>  Specify the multicast address (default: %s)\n", DEFAULT_ADDRESS);
-  printf(" -p, --port   <port>  Specify the multisact port (default: %"PRIu16")\n", DEFAULT_PORT);
-  printf(" -s, --sec    <sec>   Specify the interval in second between two packets (default: %i)\n", DEFAULT_TIME_SECOND);
-  printf(" -m, --msec   <msec>  Specify the interval in millisecond between two packets (default: %i)\n", DEFAULT_TIME_MILLISECOND);
-  printf(" -l, --size   <size>  Specify the size of outgoing packets (default: %i)\n", DEFAULT_SIZE);
-  printf(" -i, --bind   <name>  Specify the interface to bind one (default: %s)\n", DEFAULT_INTERFACE);
+  printf(" -a, --addr   <addr>  Specify the multicast address (default: %s)\n", EVALLINK_DEFAULT_ADDRESS);
+  printf(" -p, --port   <port>  Specify the multisact port (default: %"PRIu16")\n", EVALLINK_DEFAULT_PORT);
+  printf(" -s, --sec    <sec>   Specify the interval in second between two packets (default: %i)\n", EVALLINK_DEFAULT_TIME_SECOND);
+  printf(" -m, --msec   <msec>  Specify the interval in millisecond between two packets (default: %i)\n", EVALLINK_DEFAULT_TIME_MILLISECOND);
+  printf(" -l, --size   <size>  Specify the size of outgoing packets (default: %i)\n", EVALLINK_DEFAULT_SIZE);
+  printf(" -i, --bind   <name>  Specify the interface to bind one (default: %s)\n", EVALLINK_DEFAULT_INTERFACE);
   exit(err);
 }
 
@@ -645,8 +645,8 @@ static const struct option long_options[] = {
   {NULL,                          0, 0,   0  }
 };
 
-const char *default_address   = DEFAULT_ADDRESS;
-const char *default_interface = DEFAULT_INTERFACE;
+const char *default_address   = EVALLINK_DEFAULT_ADDRESS;
+const char *default_interface = EVALLINK_DEFAULT_INTERFACE;
 
 int
 main(int argc, char *argv[])
@@ -654,12 +654,12 @@ main(int argc, char *argv[])
   int opt;
   const char *addr_s = default_address;
   const char *interface = default_interface;
-  in_port_t port = DEFAULT_PORT;
+  in_port_t port = EVALLINK_DEFAULT_PORT;
   struct in6_addr addr = IN6ADDR_LOOPBACK_INIT;
   struct timeval delay;
-  delay.tv_sec = DEFAULT_TIME_SECOND;
-  delay.tv_usec = DEFAULT_TIME_MILLISECOND;
-  int size = DEFAULT_SIZE;
+  delay.tv_sec = EVALLINK_DEFAULT_TIME_SECOND;
+  delay.tv_usec = EVALLINK_DEFAULT_TIME_MILLISECOND;
+  int size = EVALLINK_DEFAULT_SIZE;
   uint32_t scope = 0;
   static_flags = 0;
 
@@ -684,25 +684,25 @@ main(int argc, char *argv[])
         addr_s = optarg;
         break;
       case 'p':
-        if (port != DEFAULT_PORT) {
+        if (port != EVALLINK_DEFAULT_PORT) {
           usage(1, argv[0]);
         }
         sscanf(optarg, "%"SCNu16, &port);
         break;
       case 's':
-        if (delay.tv_sec != DEFAULT_TIME_SECOND) {
+        if (delay.tv_sec != EVALLINK_DEFAULT_TIME_SECOND) {
           usage(1, argv[0]);
         }
         sscanf(optarg, "%ld", &delay.tv_sec);
         break;
       case 'u':
-        if (delay.tv_usec != DEFAULT_TIME_MILLISECOND) {
+        if (delay.tv_usec != EVALLINK_DEFAULT_TIME_MILLISECOND) {
           usage(1, argv[0]);
         }
         sscanf(optarg, "%li", &delay.tv_usec);
         break;
       case 'l':
-        if (size != DEFAULT_SIZE) {
+        if (size != EVALLINK_DEFAULT_SIZE) {
           usage(1, argv[0]);
         }
         sscanf(optarg, "%i", &size);
