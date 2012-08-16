@@ -306,6 +306,7 @@ open_monitor_interface(const char *interface, const uint32_t phy_inter) {
     goto close_socket;
   }
 
+  close(sockfd);
   return 0;
 
 close_socket:
