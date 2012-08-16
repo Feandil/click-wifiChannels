@@ -177,11 +177,6 @@ struct historical_correlation *histo_corr;
 bool long_history_looped;
 
 /**
- * Base output
- */
-FILE* output;
-
-/**
  * Read an input line, try to extract the contained data and update the input state description.
  * Filter source IPv6,
  * Filter packet too late compared to their espected arrive time,
@@ -682,13 +677,12 @@ temporal_dependence(uint8_t new_state)
 /**
  * Read on step the available input and update the stats of the first run.
  * @param out    Output file for translation into 0's and 1's
- * @param print  Do we print the translation into 0's and 1's ?
  * @param data   First run related states
  * @param states Input description
  * @return OK: >= 0, EOF: -1, ERROR: < -1
  */
 static int
-first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
+first_pass(FILE* out, struct first_run *data, struct state *states)
 {
   ssize_t tmp;
   uint64_t age[2];
@@ -736,7 +730,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
     }
     if (age[0] != 0) {
       for (i = age[0]; i > 1; --i) {
-        if (print) {
+        if (out != NULL) {
           fprintf(out, "0 0\n");
         }
         ADD_VAL(0,0)
@@ -744,7 +738,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
         ++signals[INT8_MAX + 1][INT8_MAX + 1];
       }
       ADD_BURST(coordbursts, age[0])
-      if (print) {
+      if (out != NULL) {
         fprintf(out, "1 1 | %"PRIi8" - %"PRIi8"\n", states[0].signal_new, states[1].signal_new);
       }
       ADD_VAL(1,1)
@@ -760,7 +754,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
     return tmp;
   } else if (age[0] < age[1]) {
     for(i = age[0]; i > 1; --i) {
-      if (print) {
+      if (out != NULL) {
         fprintf(out, "0 0\n");
       }
       ADD_VAL(0,0)
@@ -768,7 +762,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
       ++signals[INT8_MAX + 1][INT8_MAX + 1];
     }
     ADD_BURST(coordbursts, age[0])
-    if (print) {
+    if (out != NULL) {
       fprintf(out, "1 0 | %"PRIi8" - %"PRIi8"\n", states[0].signal_new, 0);
     }
     ADD_VAL(1,0)
@@ -782,7 +776,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
     return tmp;
   } else /* age[0] > age[1] */ {
     for(i = age[1]; i > 1; --i) {
-      if (print) {
+      if (out != NULL) {
         fprintf(out, "0 0\n");
       }
       ADD_VAL(0,0)
@@ -790,7 +784,7 @@ first_pass(FILE* out, bool print, struct first_run *data, struct state *states)
       ++signals[INT8_MAX + 1][INT8_MAX + 1];
     }
     ADD_BURST(coordbursts, age[1])
-    if (print) {
+    if (out != NULL) {
       fprintf(out, "0 1 | %"PRIi8" - %"PRIi8"\n", 0, states[1].signal_new);
     }
     ADD_VAL(0,1)
@@ -1427,6 +1421,7 @@ main(int argc, char *argv[])
 {
   int opt, ret, pos, i;
   FILE* tmp;
+  FILE* output;
   char *out_filename = NULL;
   char *histo_filename = NULL;
   FILE *histo_file = NULL;
@@ -1436,7 +1431,6 @@ main(int argc, char *argv[])
   size_t uret;
   ssize_t sret;
   bool stats = false;
-  bool print = false;
 
   struct state *states;
   struct first_run *first;
@@ -1698,10 +1692,12 @@ PRINTF("Debug enabled\n")
       printf("Unable to open output file '%s'\n",out_filename);
       return -1;
     }
-    print = true;
-  } else if (!stats) {
-    printf("No statistics required, no output file given: nothing to do, abording\n");
-    usage(-2, argv[0]);
+  } else {
+    output = NULL;
+    if (!stats) {
+      printf("No statistics required, no output file given: nothing to do, abording\n");
+      usage(-2, argv[0]);
+    }
   }
 
   if (histo_corr_file == NULL) {
@@ -1756,7 +1752,7 @@ PRINTF("Debug enabled\n")
   }
 
   do {
-    sret = first_pass(output, print, first, states);
+    sret = first_pass(output, first, states);
   } while (sret >= 0);
 
   if (states[0].input.input.input != NULL) {
