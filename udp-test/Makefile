@@ -64,6 +64,7 @@ clean:
 	-rm evallink
 	-rm test-zcat
 	-rm -r html
+	-rm doxygen_*.tmp
 
 evallink: evallink.o $(MONITOR_DEP)
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(EV_LIBS) $(RT_LIBS) $(NL_LIBS) $(NCURSES_LIBS) -o $@
