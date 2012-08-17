@@ -37,7 +37,6 @@ struct client_buffer {
   char buf[BUF_SIZE];
 };
 
-struct client_buffer* buffer;
 
 /* Event loop */
 struct ev_loop      *event_loop;
@@ -52,6 +51,10 @@ static void event_end(struct ev_loop *loop, struct ev_timer *w, int revents) {
 static void event_cb(struct ev_loop *loop, ev_periodic *periodic, int revents) {
   ssize_t len, sent_len;
   int i;
+  struct client_buffer* buffer;
+
+  buffer = (struct client_buffer*) periodic->data;
+  assert(buffer != NULL);
 
   len = snprintf(buffer->buf, BUF_SIZE, ",%f,%"PRIu64"|", ev_time(), buffer->count);
   assert(len > 0);
@@ -76,15 +79,14 @@ static struct ev_periodic*
 init(in_port_t port, struct in6_addr *addr, double offset, double delay, const uint64_t count, const int size, const char* interface, uint32_t scope, int train_size)
 {
   struct ev_periodic* event;
-
+  struct client_buffer* buffer;
 
   /* Create buffer */
-  buffer = (struct client_buffer *)malloc(sizeof(struct client_buffer));
+  buffer = calloc(1, sizeof(struct client_buffer));
   if (buffer == NULL) {
     PRINTF("Unable to use malloc\n")
     return NULL;
   }
-  memset(buffer, 0, sizeof(struct client_buffer));
 
   /* Create socket */
   if ((buffer->fd = socket(AF_INET6, SOCK_DGRAM, 0)) < 0) {
@@ -282,11 +284,12 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, down);
   ev_loop(event_loop, 0);
 
+  assert(send_mess->data != NULL);
+  free(send_mess->data);
   free(send_mess);
   ev_timer_stop(event_loop, event_killer);
   free(event_killer);
   ev_default_destroy();
 
-  free(buffer);
   return 0;
 }
