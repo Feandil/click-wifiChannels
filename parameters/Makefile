@@ -1,4 +1,30 @@
-CXXFLAGS=-pipe -O2 -g -Wall -Werror -Wchar-subscripts -Wundef -Wshadow -Wwrite-strings -Wsign-compare -Wunused -Wno-unused-parameter -Wuninitialized -Winit-self -Wpointer-arith -Wredundant-decls -Wformat-nonliteral -Wno-format-y2k -Wmissing-format-attribute -Wsequence-point -Wparentheses -Wmissing-declarations
+CXXFLAGS?=-pipe -O2 -g -Wall -Wextra -Werror \
+	-Wcast-qual \
+	-Wcast-align \
+	-Wchar-subscripts \
+	-Wconversion \
+	-Wfloat-equal \
+	-Wformat-nonliteral \
+	-Wformat-security \
+	-Winit-self \
+	-Wlogical-op \
+	-Wmissing-declarations \
+	-Wmissing-include-dirs \
+	-Wmissing-format-attribute \
+	-Wpointer-arith \
+	-Wredundant-decls \
+	-Wsign-conversion \
+	-Wshadow \
+	-Wtrampolines \
+	-Wwrite-strings \
+	-Wundef \
+	-Wunused \
+	-Wno-unused-parameter \
+	-Wno-format-zero-length \
+	-Wno-format-y2k \
+	-Wsuggest-attribute=pure \
+	-Wsuggest-attribute=noreturn \
+	-Wunsafe-loop-optimizations
 
 all: parseInput
 

@@ -123,7 +123,7 @@ ParamBasicMTA::nextRound()
   /* Consider the last bit */
   onoff->addChar(!current_state);
   /* Calculate C */
-  double mean = 0, standard_deviation = 0, temp, total = onoff->getRawErrorBurstNumber();;
+  double mean = 0, standard_deviation = 0, temp, total = (double)onoff->getRawErrorBurstNumber();
   const std::map<uint32_t, uint64_t>* errors = onoff->getRawErrorBurstLengthCDF();
   std::map<uint32_t, uint64_t>::const_iterator it;
   for (it = errors->begin(); it != errors->end(); ++it) {
@@ -138,7 +138,7 @@ ParamBasicMTA::nextRound()
   if ((!std::isfinite(total)) || (total >= UINT32_MAX)) {
     std::cerr << "OVERFLOW" << std::endl;
   }
-  C = total;
+  C = (uint32_t)total;
   /* Clean and start new round */
   onoff->clean();
   onoff->init(NULL, NULL);

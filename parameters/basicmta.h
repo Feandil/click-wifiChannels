@@ -20,8 +20,8 @@ class ParamBasicMTA : public ParamModule {
 
     /* Variables */
     bool current_state;
-    uint64_t length;
-    uint64_t length_error;
+    uint32_t length;
+    uint32_t length_error;
 
     bool second_round;
     ParamMarckovChain *markov;

@@ -12,7 +12,7 @@ void
 ParamMarckovChain::init(const int kb, const char* const filename)
 {
   k = kb;
-  state_mod = 1 << k;
+  state_mod = ((uint32_t)1) << k;
   state = 0;
   states = new uint64_t[state_mod << 1];
   transitions = new uint32_t[state_mod];

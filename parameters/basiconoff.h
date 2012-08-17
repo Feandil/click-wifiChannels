@@ -26,7 +26,7 @@ class ParamBasicOnOff : public ParamModule {
     std::map<uint32_t, uint32_t> error_length_final;
 
     bool current_state;
-    uint64_t length;
+    uint32_t length;
 
     /* Output */
     const char *error_filename, *free_filename;
@@ -59,10 +59,10 @@ class ParamBasicOnOff : public ParamModule {
 
     /* Get direct source data */
     const std::map<uint32_t, uint64_t>* getRawErrorFreeBurstLengthCDF(void) { return &success_length; }
-    const uint64_t getRawErrorFreeBurstNumber(void) { return success_total; }
+    uint64_t getRawErrorFreeBurstNumber(void) { return success_total; }
     const std::map<uint32_t, uint64_t>* getRawErrorBurstLengthCDF(void) { return &error_length; }
-    const uint64_t getRawErrorBurstNumber(void) { return error_total; }
-    
+    uint64_t getRawErrorBurstNumber(void) { return error_total; }
+
     /* Finalise the data */
     void finalize(const uint32_t);
 
