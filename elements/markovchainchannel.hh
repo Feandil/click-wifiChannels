@@ -17,8 +17,8 @@ class MarkovChainChannel : public Element {
     /*
      * Current state description:
      * The _current_state variable contains the history in binary:
-     *  _current_state & (1 << i) means that (i - 1) step ago it was a success
-     * The _state_contains the first state to forget, that is (1 << (k - 1))
+     *  _current_state & (1 << i) means that (i + 1) step ago it was a success
+     * The _state_contains the first state to forget, that is (1 << k)
      */
     uint32_t _current_state;
     uint32_t _state_modulo;
