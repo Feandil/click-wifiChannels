@@ -3,42 +3,50 @@
 
 #include "module.h"
 
+/**
+ * Extract a Markov-chain representation.
+ * Produce the probability of success of the different states of a k-th order Markov Chain
+ */
 class ParamMarckovChain : public ParamModule {
 
   private:
-
-    /* Variables */
+    //! Order of the Markov state
     int k;
-    uint32_t state, state_mod, *transitions;
+    /**
+     * Current history in binary.
+     * state & (1 << k) means that k + 1 step ago it was a success
+     */
+    uint32_t state;
+    //! first state to forget, that is (1 << k)
+    uint32_t state_mod;
+    //! Number of occurences of the indexed state
     uint64_t *states;
-    const char * output_filename;
+    //! Probability, relatively to rand_max, to have a success in the indexed state
+    uint32_t *transitions;
+    //! File which will contain the generated parameters
+    const char *output_filename;
 
   public:
-
-    /* Initialize the module */
+    /* Methodes of ParamModule */
     int init(const int, char **, const bool, const char**);
-    void init(const int, const char* const);
-
-    /* Clean the module */
     void clean();
-
-    /* Add input char */
     int addChar(const bool);
-    
-    /* Is-there a 2nd round ? (prepare the module to the potential 2nd round */
     bool nextRound();
-
-    /* Finalise the data */
     void finalize(const uint32_t);
-
-    /* Output */
     void printBinary();
     void printHuman(const uint32_t);
-    
-    /* Error String */
+
+    /**
+     * Special module-dependant initialization
+     * @param k Order of the Markov chain
+     * @param filename Name of the file used for printing the Markov chain representation
+     */
+    void init(const int k, const char* const filename);
+
+    //! Error message: A k-th order Markov-chain need an order k
     static const char * const knotset;
 
-    /* name */
+    //! Name of this module
     static const char* name() { return "markovchain"; }
 };
 

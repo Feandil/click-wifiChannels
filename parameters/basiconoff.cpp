@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdint.h>
 
-
 const struct option ParamBasicOnOff::long_options[] = {
   {"free",        required_argument, 0,  'f' },
   {"err",         required_argument, 0,  'r' },

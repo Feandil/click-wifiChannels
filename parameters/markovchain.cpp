@@ -22,7 +22,7 @@ ParamMarckovChain::init(const int kb, const char* const filename)
 }
 
 int
-ParamMarckovChain::init(const int argc, char *argv[], const bool human_readable, const char ** err)
+ParamMarckovChain::init(const int argc, char **argv, const bool human_readable, const char** err)
 {
   int opt;
   optind = 1;
@@ -101,6 +101,15 @@ ParamMarckovChain::finalize(const uint32_t manx_rand)
   }
 }
 
+//! Try to write something to output and detect any error
+#define WRITE(x)                                             \
+  *output << x << std::endl;                                 \
+  if (output->bad()) {                                       \
+    std::cerr << "error when writing to output" <<std::endl; \
+    exit (-1);;                                              \
+  }
+//"
+
 void
 ParamMarckovChain::printBinary()
 {
@@ -114,12 +123,6 @@ ParamMarckovChain::printBinary()
     output = output_f;
   }
   uint32_t temp;
-#define WRITE(x)                                             \
-  *output << x << std::endl;                                 \
-  if (output->bad()) {                                       \
-    std::cerr << "error when writing to output" <<std::endl; \
-    exit (-1);;                                              \
-  }
   WRITE(state_mod)
   WRITE(state)
   for (temp = 0; temp < state_mod; ++temp) {
