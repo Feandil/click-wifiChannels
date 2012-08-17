@@ -24,11 +24,6 @@
  */
 #define BUF_SIZE 1500
 /**
- * Buffer size for transforming binary date to string
- */
-#define TIME_SIZE 128
-
-/**
  * Buffer size for controle headers
  */
 #define CONTROL_SIZE 512
