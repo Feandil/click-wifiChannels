@@ -63,22 +63,23 @@ client: client.o zutil.o
 extract: extract.o zutil.o
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(MATH_LIBS) -o $@
 
+evallink: evallink.o $(MONITOR_DEP)
+	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(EV_LIBS) $(RT_LIBS) $(NL_LIBS) $(NCURSES_LIBS) -o $@
+
 test-zcat: zutil.c
 	$(COMPILE.c) -Wno-cast-qual -DTEST $(OUTPUT_OPTION)  $< -o $@.o
 	$(LINK.c) $@.o $(LOADLIBES) $(LDLIBS) -o $@
+
+doc: html
+html: Doxyfile *.c *.h
+	@doxygen $<
 
 clean:
 	-rm *.o
 	-rm server
 	-rm client
-	-rm transfo
+	-rm extract
 	-rm evallink
 	-rm test-zcat
 	-rm -r html
 	-rm doxygen_*.tmp
-
-evallink: evallink.o $(MONITOR_DEP)
-	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(EV_LIBS) $(RT_LIBS) $(NL_LIBS) $(NCURSES_LIBS) -o $@
-
-doc:
-	@doxygen
