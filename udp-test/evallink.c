@@ -338,6 +338,7 @@ send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
  * @param delay     Delay of the periodic event.
  * @param interface Interface to bind on (only if scope is 0).
  * @param scope "   Scope" of the IPv6 address if it's a link address (index of the corresponding interface).
+ * @return Periodic event
  */
 static struct ev_periodic*
 send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, const char* interface, uint32_t scope)
