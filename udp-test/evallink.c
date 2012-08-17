@@ -735,13 +735,13 @@ main(int argc, char *argv[])
         usage(0, argv[0]);
         return 0;
       case 'd':
-        if (static_flags && EVALLINK_FLAG_NOSEND) {
+        if (static_flags & EVALLINK_FLAG_NOSEND) {
           usage(1, argv[0]);
         }
         static_flags |= EVALLINK_FLAG_DAEMON;
         break;
       case 'e':
-        if (static_flags && EVALLINK_FLAG_DAEMON) {
+        if (static_flags & EVALLINK_FLAG_DAEMON) {
           usage(1, argv[0]);
         }
         static_flags |= EVALLINK_FLAG_NOSEND | EVALLINK_FLAG_MON_EXIST;

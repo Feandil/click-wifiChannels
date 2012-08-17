@@ -1,22 +1,33 @@
 CFLAGS?=-pipe -O2 -g -Wall -Wextra -Werror \
+	-Wbad-function-cast \
 	-Wcast-qual \
 	-Wcast-align \
 	-Wconversion \
 	-Wformat-nonliteral \
+	-Wformat-security \
 	-Winit-self \
+	-Wjump-misses-init \
+	-Wlogical-op \
 	-Wmissing-declarations \
+	-Wmissing-include-dirs \
 	-Wmissing-format-attribute \
 	-Wmissing-prototypes \
+	-Wnested-externs \
 	-Wpointer-arith \
 	-Wredundant-decls \
 	-Wshadow \
 	-Wstrict-prototypes \
+	-Wtrampolines \
 	-Wwrite-strings \
 	-Wundef \
 	-Wunused \
 	-Wno-unused-parameter \
 	-Wno-format-zero-length \
-	-Wno-format-y2k
+	-Wno-format-y2k \
+	-Wsuggest-attribute=pure \
+	-Wsuggest-attribute=const \
+	-Wsuggest-attribute=noreturn \
+	-Wunsafe-loop-optimizations
 
 # -Wtraditionnal -pedantic
 
