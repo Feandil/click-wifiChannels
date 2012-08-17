@@ -293,7 +293,6 @@ drop_on(in_port_t port, struct ipv6_mreq *mreq)
 /**
  * Callback of the greload event.
  * Change the active file for output.
- * Can also be call directly but no threading protection !!!
  * Standard prototype for libev's ev_periodic callback.
  * @param loop     Event loop on which this event is.
  * @param periodic Event that tiggered this call, should be 'send_mess'.
@@ -343,15 +342,19 @@ reload_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
 
 /**
  * Callback for signals 'SIGHUP'.
- * Need to be fixed
+ * Rescedule reload_cb if needed/possible
  * @param sig Signal received (should be SIGHUP).
  */
 static void
 reload(int sig)
 {
+  if (greload == NULL) {
+    printf("Feature not activated at program launch, not available now\n");
+    return;
+  }
   if (!(ev_is_active(greload) && ev_is_pending(greload))) {
-    //!TODO: reschedule the reloading event
-    reload_cb(event_loop, greload, SIGHUP);
+    greload->offset = ev_now(event_loop) + 0.001;
+    ev_periodic_again(event_loop, greload);
   } else {
     printf("Reload should be triggered now thus just wait\n");
   }
@@ -398,7 +401,7 @@ usage(int err, char *name)
   printf(" -o, --ouput  <file>  Specify the output file (default: standard output)\n");
   printf(" -r, --rand           Randomize the output file by adding a random number\n");
   printf("     --reload <secs>  Change the output file every <secs> seconds (disabled if <secs> <= 0, disabled by default)\n");
-  printf("                       If enabled, also grant the user to manually rotate the file by sending a SIGHUP. Danger: no threading protection !");
+  printf("                       If enabled, also grant the user to manually rotate the file by sending a SIGHUP.");
   printf(" -l, --level  [0-9]   Specify the level of the output compression (default : %i)\n", SERVER_DEFAULT_ENCODE);
   printf(" -p, --port   <port>  Specify the port to listen on (default: %"PRIu16")\n", SERVER_DEFAULT_PORT);
   printf(" -b           <addr>  Specify the address used for multicast (default : %s)\n", SERVER_DEFAULT_MULTICAST);
@@ -590,14 +593,17 @@ main(int argc, char *argv[])
     return -2;
   }
 
-  if((greload = (ev_periodic*) malloc(sizeof(ev_periodic))) == NULL) {
-    PRINTF("Malloc\n")
-    return -1;
-  }
-  ev_periodic_init(greload, reload_cb, ev_now(event_loop), reload_timer, NULL);
-  greload->data = glisten->data;
   if (reload_timer > 0) {
+    if((greload = (ev_periodic*) malloc(sizeof(ev_periodic))) == NULL) {
+      PRINTF("Malloc\n")
+      return -1;
+    }
+    ev_periodic_init(greload, reload_cb, ev_now(event_loop), reload_timer, NULL);
+    greload->data = glisten->data;
+
     ev_periodic_start(event_loop, greload);
+  } else {
+    greload = NULL;
   }
 
   signal(SIGINT, down);
@@ -620,8 +626,10 @@ main(int argc, char *argv[])
   free(glisten);
   ev_io_stop(event_loop, gdrop);
   free(gdrop);
-  ev_periodic_stop(event_loop, greload);
-  free(greload);
+  if (reload_timer > 0) {
+    ev_periodic_stop(event_loop, greload);
+    free(greload);
+  }
   ev_timer_stop(event_loop, event_killer);
   free(event_killer);
   free(arg);
