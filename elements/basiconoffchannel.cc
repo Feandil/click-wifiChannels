@@ -7,6 +7,10 @@
 
 CLICK_DECLS
 
+/**
+ * Generate a number in the given distribution
+ * Simple binary search
+ */
 int
 BasicOnOffChannel::thresholdrand (const Vector<CDFPoint> &distribution)
 {
@@ -14,7 +18,7 @@ BasicOnOffChannel::thresholdrand (const Vector<CDFPoint> &distribution)
   int min,
       max,
       pos;
-  
+
   rand = click_random();
   min = 0;
   max = distribution.size() - 1;
@@ -38,7 +42,7 @@ BasicOnOffChannel::thresholdrand (const Vector<CDFPoint> &distribution)
 void
 BasicOnOffChannel::static_initialize()
 {
-  //Probably not needed:
+  //Probably not needed but doesn't hurt:
   click_random_srandom();
 }
 
@@ -73,43 +77,54 @@ BasicOnOffChannel::load_cdf_from_file(const String filename, ErrorHandler *errh,
   uint32_t len;
   CDFPoint point;
 
+  /* Open the file */
   _ff.filename() = filename;
   if (_ff.initialize(errh) < 0) {
     errh->error("BasicOnOff input file unreadable");
     return -1;
   }
 
+  /* Extract the first line, which contain the length of the input */
   if ((_ff.read_line(in, errh) <= 0) || (cp_integer(in.begin(), in.end() - 1, 10, &len) != in.end() - 1)) {
     errh->error("BasicOnOff input file error : bad input (reading length)");
     _ff.cleanup();
     return -2;
   }
+  /* Reserve the place needed directly, to reduce the number of size change */
   dist.reserve(len);
-  
+
+  /* Read the data */
   while (len != 0) {
     --len;
+    /* Read a line: contains a point value */
     if ((_ff.read_line(in, errh) <= 0) || (cp_integer(in.begin(), in.end() - 1, 10, &buffer) != in.end() - 1)) {
       errh->error("BasicOnOff input file error : bad input (unable to read 1)");
       _ff.cleanup();
       dist.clear();
       return -3;
     }
+    /* Check for overflow */
     if (buffer > INT_MAX) {
       errh->error("BasicOnOff input file error : bad input (too large unsigned)");
       _ff.cleanup();
       dist.clear();
       return -4;
     }
+    /* Store the point value */
     point.point = (int) buffer;
+    /* Read a line: contains the cummulated probability */
     if ((_ff.read_line(in, errh) <= 0) || (cp_integer(in.begin(), in.end() - 1, 10, &buffer) != in.end() - 1)) {
       errh->error("BasicOnOff input file error : bad input (unable to read 2)");
       _ff.cleanup();
       dist.clear();
       return -5;
     }
+    /* Store the point cummulated probability */
     point.probability = buffer;
+    /* Store the point */
     dist.push_back(point);
   }
+  /* Close the file */
   _ff.cleanup();
   return 0;
 }
@@ -120,6 +135,7 @@ BasicOnOffChannel::initialize(ErrorHandler *errh)
   /* Initialize state */
   _remaining_length_in_state = 0;
   _current_state = click_random() < _initial_error_probability;
+  /* Load the probability distributions */
   return (load_cdf_from_file(_error_cdf_filename, errh, _error_burst_length) || load_cdf_from_file(_error_free_cdf_filename, errh, _error_free_burst_length));
 }
 
@@ -142,10 +158,10 @@ BasicOnOffChannel::push (int, Packet *p)
       _remaining_length_in_state = thresholdrand(_error_burst_length);
     }
   }
-  
+
   /* Decrease the remaining length in current state/sub-state */
   --_remaining_length_in_state;
-  
+
   /* Drop or transmit depending on the sub-state */
   if (_current_state) {
     output(0).push(p);

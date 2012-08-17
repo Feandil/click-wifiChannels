@@ -15,34 +15,33 @@ class BasicOnOffChannel : public Element {
         uint32_t probability;
         int point;
     };
-  
+
     /* Variables used to store the statistic representation from the configuration files */
     uint32_t _initial_error_probability;
     Vector<CDFPoint> _error_burst_length;
     Vector<CDFPoint> _error_free_burst_length;
-  
+
     /* FileDescriptor */
     FromFile _ff;
     String _error_cdf_filename;
     String _error_free_cdf_filename;
-	
-	  /* Load a CDF for a file */
+
+    /* Load a CDF for a file */
     int load_cdf_from_file(const String, ErrorHandler *, Vector<CDFPoint>&);
 
     /* Generate a random number from a Cumulative distribution functions */
     int thresholdrand(const Vector<CDFPoint>&);
-   
-    /* Current state description */
 
+    /* Current state description */
     bool _current_state;  // True if error-free, false if error
     int _remaining_length_in_state;
- 
+
   public:
     /* Behaviour descriptors */
-    const char *class_name() const { return "BasicOnOffChannel"; }
-    const char *port_count() const { return PORTS_1_1X2; }
-    const char *processing() const { return PUSH; }
-    const char *flow_code()  const { return COMPLETE_FLOW; }
+    const char *class_name() const { return "BasicOnOffChannel"; } // Name of this thing
+    const char *port_count() const { return PORTS_1_1X2; }         // 1 port in, 1-2 ports out
+    const char *processing() const { return PUSH; }                // Working in push mode (not pull nor agnostic)
+    const char *flow_code()  const { return COMPLETE_FLOW; }       // A packet can go to both the out port
 
     /* Static initializer : called only once by Click */
     void static_initialize();
