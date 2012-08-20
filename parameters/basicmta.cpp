@@ -148,6 +148,7 @@ ParamBasicMTA::addChar(const bool input)
 bool
 ParamBasicMTA::nextRound()
 {
+  assert(!second_round);
   /* Consider the last bit */
   onoff->addChar(!current_state);
   /* Calculate the threshold C */
@@ -200,7 +201,7 @@ ParamBasicMTA::finalize(const uint32_t max_rand)
     onoff->addChars(false, length_error);
   }
   /* Finalize the submodules */
-  onoff->finalize(max_rand); // This adds a entry at the end of the input. TODO: fix it
+  onoff->finalize(max_rand); // This doesn't flush any internal state. As we only used addChars and not addChar, onoff->length = 0
   markov->finalize(max_rand);
 }
 

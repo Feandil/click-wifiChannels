@@ -81,31 +81,10 @@ ParamBasicOnOff::addChar(const bool input)
     /* If we are still in the same state, increase the stored counter */
     ++length;
   } else {
-    /* The state is changing, flush the internal counter */
+    /* The state is changing, use the other function to flush the internal counter */
     /* Length can be null at the begining */
     if (length) {
-      std::map<uint32_t, uint64_t>::iterator temp;
-      if (current_state) {
-        /* It's the end of an error-free burst, try to increase the corresponding mapped entry */
-        temp = success_length.find(length);
-        if (temp == success_length.end()) {
-          /* The entry didn't exist, create it */
-          success_length.insert(std::pair<uint32_t,uint64_t>(length, 1));
-        } else {
-          ++((*temp).second);
-        }
-        ++success_total;
-      } else {
-        /* It's the end of an error burst, try to increase the corresponding mapped entry */
-        temp = error_length.find(length);
-        if (temp == error_length.end()) {
-          /* The entry didn't exist, create it */
-          error_length.insert(std::pair<uint32_t,uint64_t>(length, 1));
-        } else {
-          ++((*temp).second);
-        }
-        ++error_total;
-      }
+      addChars(current_state, length);
     }
     /* Reset counter and state */
     current_state = input;
@@ -119,16 +98,20 @@ ParamBasicOnOff::addChars(const bool input, const uint32_t len)
 {
   std::map<uint32_t, uint64_t>::iterator temp;
   if (input) {
+    /* It's the end of an error-free burst, try to increase the corresponding mapped entry */
     temp = success_length.find(len);
     if (temp == success_length.end()) {
+      /* The entry didn't exist, create it */
       success_length.insert(std::pair<uint32_t,uint64_t>(len, 1));
     } else {
       ++((*temp).second);
     }
     ++success_total;
   } else {
+    /* It's the end of an error burst, try to increase the corresponding mapped entry */
     temp = error_length.find(len);
     if (temp == error_length.end()) {
+      /* The entry didn't exist, create it */
       error_length.insert(std::pair<uint32_t,uint64_t>(len, 1));
     } else {
       ++((*temp).second);

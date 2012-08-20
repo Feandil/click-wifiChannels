@@ -94,8 +94,10 @@ class ParamBasicOnOff : public ParamModule {
     int init(const char * const filename_error, const char * const filename_free);
 
     /**
-     * Register directly bursts and not symbol by symbol
-     * Warning: This function must not be used at the same time as addChar. Two consecutive addChars calls must not be called with the same bool
+     * Register directly bursts and not symbol by symbol.
+     * \warning
+     *  - This function doesn't any of the internal states used by addChar, thus theses two functions must not be used at the same time.
+     *  - Two consecutive addChars calls must be called with different 'in' values.
      * @param in True if the burst of packet was received, False if it wasn't
      * @param len Length of the burst
      * @return Ok: 0, anything else in case of error (error code)
