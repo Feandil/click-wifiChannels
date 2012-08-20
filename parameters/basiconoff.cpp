@@ -1,4 +1,5 @@
-#define __STDC_FORMAT_MACROS
+/** @file basiconoff.cpp Implementation of the Basic On-Off parameter generation module */
+
 #include "basiconoff.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -15,10 +16,12 @@ const char * const ParamBasicOnOff::needfiles = "BasicOnOff needs 2 output files
 int
 ParamBasicOnOff::init(const char * const filename_error, const char * const filename_free)
 {
+  /* Change the filenames if needed */
   if (filename_error != NULL) {
     error_filename = filename_error;
     free_filename = filename_free;
   }
+  /* Initialize various internal variables */
   success_total = 0;
   error_total = 0;
   current_state = false;
@@ -33,6 +36,7 @@ ParamBasicOnOff::init(const int argc, char **argv, const bool human_readable, co
   optind = 1;
   error_filename = NULL;
   free_filename = NULL;
+  /* Extract arguments */
   while((opt = getopt_long(argc, argv, "", long_options, NULL)) != -1) {
     switch(opt) {
       case 'f':
@@ -46,22 +50,24 @@ ParamBasicOnOff::init(const int argc, char **argv, const bool human_readable, co
         return opt;
     }
   }
-  
+  /* Verify that there is nothing left */
   if(argc > optind) {
     *err = tooMuchOption;
     return argc;
   }
-  
+  /* Do we have enough filenames ? */
   if ((!human_readable) && ((error_filename == NULL) || (free_filename == NULL))) {
     *err = needfiles;
     return -1;
   }
+  /* Use the other init funtion to initialize internal variables */
   return init(NULL, NULL);
 }
 
 void
 ParamBasicOnOff::clean(void)
 {
+  /* Clear all the maps */
   success_length.clear();
   error_length.clear();
   success_length_final.clear();
@@ -72,21 +78,28 @@ int
 ParamBasicOnOff::addChar(const bool input)
 {
   if (input == current_state) {
+    /* If we are still in the same state, increase the stored counter */
     ++length;
   } else {
+    /* The state is changing, flush the internal counter */
+    /* Length can be null at the begining */
     if (length) {
       std::map<uint32_t, uint64_t>::iterator temp;
       if (current_state) {
+        /* It's the end of an error-free burst, try to increase the corresponding mapped entry */
         temp = success_length.find(length);
         if (temp == success_length.end()) {
+          /* The entry didn't exist, create it */
           success_length.insert(std::pair<uint32_t,uint64_t>(length, 1));
         } else {
           ++((*temp).second);
         }
         ++success_total;
       } else {
+        /* It's the end of an error burst, try to increase the corresponding mapped entry */
         temp = error_length.find(length);
         if (temp == error_length.end()) {
+          /* The entry didn't exist, create it */
           error_length.insert(std::pair<uint32_t,uint64_t>(length, 1));
         } else {
           ++((*temp).second);
@@ -94,6 +107,7 @@ ParamBasicOnOff::addChar(const bool input)
         ++error_total;
       }
     }
+    /* Reset counter and state */
     current_state = input;
     length = 1;
   }
@@ -127,6 +141,7 @@ ParamBasicOnOff::addChars(const bool input, const uint32_t len)
 bool
 ParamBasicOnOff::nextRound()
 {
+  /* It's a one-pass algorithm */
   return false;
 }
 
@@ -146,26 +161,28 @@ ParamBasicOnOff::calculate_values(const uint32_t manx_rand, const std::map<uint3
 void
 ParamBasicOnOff::finalize(const uint32_t max_rand)
 {
+  /* Flush the last entry */
   addChar(!current_state);
+  /* Create the final tables */
   calculate_values(max_rand, success_length, success_total, success_length_final);
   calculate_values(max_rand, error_length, error_total, error_length_final);
 }
 
-
-void
-ParamBasicOnOff::printBinaryToFile(const std::map<uint32_t, uint32_t> &map, const char* dest)
-{
-  std::ofstream output;
-  output.open(dest);
 #define WRITE(x)                                             \
   output << x << std::endl;                                  \
   if (output.bad()) {                                        \
     std::cerr << "error when writing to output" <<std::endl; \
     exit (-1);;                                              \
   }
+//"
+
+void
+ParamBasicOnOff::printBinaryToFile(const std::map<uint32_t, uint32_t> &map, const char* dest)
+{
+  std::ofstream output;
+  output.open(dest);
   uint32_t size = map.size();
   WRITE(size)
-   
   std::map<uint32_t, uint32_t>::const_iterator it;
   for (it = map.begin(); it != map.end(); ++it) {
     WRITE(it->first);

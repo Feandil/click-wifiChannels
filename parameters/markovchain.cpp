@@ -1,3 +1,5 @@
+/** @file markovchain.cpp Implementation of the Markov chain parameter generation module */
+
 #include "markovchain.h"
 
 #include <inttypes.h>

@@ -1,3 +1,5 @@
+/** @file main.cpp Entry point for the modules */
+
 #include "module.h"
 
 #include <stdio.h>
@@ -10,6 +12,10 @@
 
 #define DEFAULT_MAX_RAND 0x7FFFFFFFU
 
+/**
+ * Print a short howto and exit.
+ * @param err Execution code to return.
+ */
 static void usage(int err)
 {
   std::ostream *output;
