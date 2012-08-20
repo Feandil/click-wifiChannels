@@ -10,6 +10,7 @@
 #include <iostream>
 #include <fstream>
 
+//! Default value for CLICK_RAND_MAX used by click on linux plateforms
 #define DEFAULT_MAX_RAND 0x7FFFFFFFU
 
 /**
@@ -48,6 +49,9 @@ static void usage(int err)
   exit(err);
 }
 
+/**
+ * Long options used by getopt_long; see 'usage' for more detail.
+ */
 static const struct option long_options[] = {
   {"human-readable",    no_argument, 0,  'h' },
   {"help",              no_argument, 0,  'e' },
@@ -60,6 +64,12 @@ static const struct option long_options[] = {
 #include "basiconoff.h"
 #include "basicmta.h"
 
+/**
+ * Read all the istream and feed it to the ParamModule
+ * @param in istream to read
+ * @param mod Module to feed
+ * @return : 0K : 0, error-code if != 0
+ */
 static int extract(std::istream *in, ParamModule *mod)
 {
   char buf;
@@ -85,6 +95,12 @@ static int extract(std::istream *in, ParamModule *mod)
   return 0;
 }
 
+/**
+ * Main system entry point
+ * @param argc Argument Count
+ * @param argv Argument Vector
+ * @return Execution return code
+ */
 int main(int argc, char *argv[])
 {
   bool human_readable;
@@ -94,7 +110,7 @@ int main(int argc, char *argv[])
   ParamModule *mod;
   std::istream *in;
   std::ifstream *fin = NULL;
-  
+
   /* Default values */
   human_readable = 0;
   max_rand = DEFAULT_MAX_RAND;
@@ -128,6 +144,7 @@ int main(int argc, char *argv[])
     usage(1);
     return 1;
   } else {
+    /* Try to find the module */
     if (strcmp(argv[optind], ParamMarckovChain::name()) == 0) {
       mod = new ParamMarckovChain();
     } else if (strcmp(argv[optind], ParamBasicOnOff::name()) == 0) {
@@ -138,26 +155,31 @@ int main(int argc, char *argv[])
       std::cerr << "Unknown Module" << std::endl;
       return -1;
     }
+    /* Initialize the module */
     ret = mod->init(argc - optind, argv + optind, human_readable, &err_message);
     if (ret) {
       fprintf(stderr, "%s (%i)\n", err_message, ret);
       return ret;
     }
   }
-  
+
+  /* Open the input file or use the standard input */
   if (input_file != NULL) {
     fin = new std::ifstream(input_file);
     in = fin;
   } else {
     in = &std::cin;
   }
-  
+
+  /* Verify input state */
   if (in->bad()) {
     std::cerr << "Unable to read input" << std::endl;
   }
-  
+
+  /* First run */
   extract(in, mod);
-  
+
+  /* Do a second run if needed */
   if (mod->nextRound()) {
     if (input_file == NULL) {
       std::cerr << "2nd round needed, input file needed" << std::endl;
@@ -167,17 +189,23 @@ int main(int argc, char *argv[])
     fin->open(input_file);
     extract(in, mod);
   }
-  
+
+  /* Close input */
   if (input_file != NULL) {
     fin->close();
   }
+
+  /* Finalize module */
   mod->finalize(max_rand);
-  
+
+  /* Print */
   if (human_readable) {
     mod->printHuman(max_rand);
   } else {
     mod->printBinary();
   }
+
+  /* Clean the module */
   mod->clean();
   return 0;
 }

@@ -151,6 +151,7 @@ ParamBasicOnOff::finalize(const uint32_t max_rand)
   calculate_values(max_rand, error_length, error_total, error_length_final);
 }
 
+//! Try to write something to output and detect any error
 #define WRITE(x)                                             \
   output << x << std::endl;                                  \
   if (output.bad()) {                                        \
@@ -197,7 +198,7 @@ void
 ParamBasicOnOff::printHuman(const uint32_t max_rand)
 {
   std::ofstream output;
-  
+
   if (free_filename == NULL ) {
     std::cout << "Error-Free-Burst length cdf" << std::endl;
     printHumanToStream(max_rand, success_length_final, std::cout);
