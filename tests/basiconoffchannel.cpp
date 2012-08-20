@@ -17,10 +17,7 @@ const char * const BasicOnOffChannel::needfiles  = "BasicOnOff needs 2 intput fi
 int
 BasicOnOffChannel::thresholdrand (const std::vector<CDFPoint> &distribution)
 {
-  uint32_t rand;
-  int min,
-      max,
-      pos;
+  uint32_t rand, min, max, pos;
   
   rand = myRand.random();
   min = 0;

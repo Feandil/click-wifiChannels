@@ -10,16 +10,14 @@ const char * const MarkovChainChannel::needfiles = "MarckChain needs 1 intput fi
 int
 MarkovChainChannel::configure(const int argc, char **argv, const char** err)
 {
-  optind = 1;
-
-  if(argc <= optind) {
+  if(argc <= 1) {
     *err = needfiles;
     return -1;
   }
   
-  filename = argv[optind];
+  filename = argv[1];
   
-  if (argc > optind + 1) {
+  if (argc > 2) {
     *err = tooMuchOption;
     return -2;
   }

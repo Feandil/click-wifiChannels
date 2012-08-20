@@ -5,6 +5,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <iostream>
 #include <fstream>
 
@@ -23,7 +24,7 @@ TestRandom::TestRandom(uint32_t max)
 
 TestRandom::TestRandom()
 {
-  mod = 1 << 31;
+  mod = ((uint32_t)1) << 31;
   urandom = new std::ifstream("/dev/urandom", std::ios::in|std::ios::binary);
 }
 

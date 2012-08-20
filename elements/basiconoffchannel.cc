@@ -14,10 +14,7 @@ CLICK_DECLS
 int
 BasicOnOffChannel::thresholdrand (const Vector<CDFPoint> &distribution)
 {
-  uint32_t rand;
-  int min,
-      max,
-      pos;
+  uint32_t rand, min, max, pos;
 
   rand = click_random();
   min = 0;
