@@ -95,4 +95,13 @@ void read_and_parse_monitor(struct mon_io_t *in, consume_mon_message consume, vo
  * @return An opaque structure, containing an socket, that can be used by read_and_parse_monitor. Need to be freed after use if 'mon' was NULL
  */
 struct mon_io_t* monitor_listen_on(struct mon_io_t* mon, in_port_t port, const char* mon_interface, const uint32_t phy_interface, const char* wan_interface, const struct in6_addr* multicast, char first);
+
+/**
+ * Extract from the opaque structure a non Link-local address for the link.
+ * @param mon   Opaque structure describing the monitoring interface.
+ * @param my_ip Where to store the IPv6 address.
+ * @return 0 if OK, < 0 for errors
+ */
+int mon_extract_my_ip(struct mon_io_t *mon, struct in6_addr *my_ip);
+
 #endif /* MONITOR_H */

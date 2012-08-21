@@ -695,3 +695,26 @@ monitor_listen_on(struct mon_io_t* mon, in_port_t port, const char* mon_interfac
 
   return mon;
 }
+
+/**
+ * Extract from the opaque structure a non Link-local address for the link.
+ * @param mon   Opaque structure describing the monitoring interface.
+ * @param my_ip Where to store the IPv6 address.
+ * @return 0 if OK, < 0 for errors
+ */
+int
+mon_extract_my_ip(struct mon_io_t *mon, struct in6_addr *my_ip)
+{
+  int i;
+
+  if (mon == NULL || my_ip == NULL) {
+    return -1;
+  }
+  for (i = 0; i < MAX_ADDR; ++i) {
+    if (!IN6_IS_ADDR_LINKLOCAL(mon->ip_addr + i) && !IN6_IS_ADDR_UNSPECIFIED(mon->ip_addr + i)) {
+       memcpy(my_ip, mon->ip_addr + i, sizeof(struct in6_addr));
+       return 0;
+    }
+  }
+  return -2;
+}
