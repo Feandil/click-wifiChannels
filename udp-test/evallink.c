@@ -135,6 +135,11 @@ char   mon_name[IF_NAMESIZE];
 char   static_flags;
 
 /**
+ * Do we force the use of a non-local IPv6 address ?
+ */
+bool non_local;
+
+/**
  * Static flag: no output (daemon).
  */
 #define EVALLINK_FLAG_DAEMON  0x01
@@ -353,11 +358,12 @@ send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
  * @param offset    Offset of the periodic event.
  * @param delay     Delay of the periodic event.
  * @param interface Interface to bind on (only if scope is 0).
- * @param scope "   Scope" of the IPv6 address if it's a link address (index of the corresponding interface).
+ * @param scope     "Scope" of the IPv6 address if it's a link address (index of the corresponding interface).
+ * @param my_ip     If not NULL, IP_address to bind on
  * @return Periodic event
  */
 static struct ev_periodic*
-send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, const char* interface, uint32_t scope)
+send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, const char* interface, uint32_t scope, struct in6_addr *my_ip)
 {
   struct ev_periodic* event;
   struct eval_buffer *buffer;
@@ -368,6 +374,10 @@ send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, cons
     PRINTF("Unable to use malloc\n")
     return NULL;
   }
+
+  /* We are using ipv6 on a special port */
+  buffer->addr.sin6_family = AF_INET6;
+  buffer->addr.sin6_port   = htons(port);
 
   /* Create socket */
   if ((buffer->fd = socket(AF_INET6, SOCK_DGRAM, 0)) < 0) {
@@ -388,9 +398,17 @@ send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, cons
     buffer->addr.sin6_scope_id = scope;
   }
 
+  /* Bind to an non-local address if asked */
+  if (my_ip != NULL) {
+    non_local = true;
+    memcpy(&buffer->addr.sin6_addr, my_ip, sizeof(struct in6_addr));
+    if (bind(buffer->fd,(struct sockaddr *) &buffer->addr, sizeof(struct sockaddr_in6))) {
+      printf("Unable to bind to non-local address as it was asked\n");
+      PRINTF("bind()");
+    }
+  }
+
   /* Store the destination */
-  buffer->addr.sin6_family = AF_INET6;
-  buffer->addr.sin6_port   = htons(port);
   memcpy(&buffer->addr.sin6_addr, addr, sizeof(struct in6_addr));
 
   /* Init event */
@@ -528,7 +546,7 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
   if (!(static_flags & EVALLINK_FLAG_DAEMON)) {
     /* Then try to see if our ipaddress is inside thoses */
     for (addr_pos = 0; addr_pos < MAX_ADDR; ++addr_pos) {
-      if (IN6_IS_ADDR_LINKLOCAL(&mon->ip_addr[addr_pos])) {
+      if (non_local ? (!IN6_IS_ADDR_LINKLOCAL(&mon->ip_addr[addr_pos]) && !IN6_IS_ADDR_UNSPECIFIED(&mon->ip_addr[addr_pos])) : IN6_IS_ADDR_LINKLOCAL(&mon->ip_addr[addr_pos])) {
         incoming = (const struct in_air*) data;
         while (*incoming->ip.s6_addr32 != 0) {
           if (memcmp(&incoming->ip, &mon->ip_addr[addr_pos], sizeof(struct in6_addr)) == 0) {
@@ -678,6 +696,7 @@ static void usage(int err, char *name)
   printf(" -m, --msec   <msec>  Specify the interval in millisecond between two packets (default: %i)\n", EVALLINK_DEFAULT_TIME_MILLISECOND);
   printf(" -l, --size   <size>  Specify the size of outgoing packets (default: %i)\n", EVALLINK_DEFAULT_SIZE);
   printf(" -i, --bind   <name>  Specify the interface to bind one (default: %s)\n", EVALLINK_DEFAULT_INTERFACE);
+  printf(" -n, --nonlocal       Force the use of a non-local IPv6\n");
   exit(err);
 }
 
@@ -688,6 +707,7 @@ static const struct option long_options[] = {
   {"help",              no_argument, 0,  'h' },
   {"daemon",            no_argument, 0,  'd' },
   {"slave",             no_argument, 0,  'e' },
+  {"nonlocal",          no_argument, 0,  'n' },
   {"addr",        required_argument, 0,  'a' },
   {"port",        required_argument, 0,  'p' },
   {"sec",         required_argument, 0,  's' },
@@ -728,8 +748,9 @@ main(int argc, char *argv[])
   uint32_t scope = 0;
   static_flags = 0;
   struct in6_addr my_ip;
+  bool force_non_local = false;
 
-  while((opt = getopt_long(argc, argv, "hdea:p:s:u:l:i:", long_options, NULL)) != -1) {
+  while((opt = getopt_long(argc, argv, "hdea:p:s:u:l:i:n", long_options, NULL)) != -1) {
     switch(opt) {
       case 'h':
         usage(0, argv[0]);
@@ -779,6 +800,12 @@ main(int argc, char *argv[])
         }
         interface = optarg;
         break;
+      case 'n':
+        if (force_non_local) {
+          usage(1, argv[0]);
+        }
+        force_non_local = true;
+        break;
       default:
         usage(1, argv[0]);
         break;
@@ -826,13 +853,24 @@ main(int argc, char *argv[])
      return -4;
   }
 
-  if (mon_extract_my_ip(recv_mess->data, &my_ip)) {
-    PRINTF("Unable to get the local IPv6 address\b")
-    return -5;
+  if (force_non_local) {
+    if (mon_extract_my_ip(recv_mess->data, &my_ip)) {
+      PRINTF("Unable to get the local IPv6 address\b")
+      return -5;
+    }
+  } else {
+    if (mon_extract_my_local_ip(recv_mess->data, &my_ip)) {
+      PRINTF("Unable to get the local IPv6 address\b")
+      return -5;
+    }
   }
 
   if (!(static_flags & EVALLINK_FLAG_NOSEND)) {
-    send_mess = send_on(port, &addr, 0, delay.tv_sec + (((double) delay.tv_usec) / 1000), interface, scope);
+    if (force_non_local) {
+      send_mess = send_on(port, &addr, 0, delay.tv_sec + (((double) delay.tv_usec) / 1000), interface, scope, &my_ip);
+    } else {
+      send_mess = send_on(port, &addr, 0, delay.tv_sec + (((double) delay.tv_usec) / 1000), interface, scope, NULL);
+    }
     if (send_mess == NULL) {
       PRINTF("Unable to create sending event\n")
       return -2;
