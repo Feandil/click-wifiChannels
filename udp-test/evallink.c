@@ -309,7 +309,7 @@ send_cb(struct ev_loop *loop, ev_periodic *periodic, int revents)
   assert(buffer != NULL);
 
   /* Retreive the current clock */
-  ret = clock_gettime(CLOCK_MONOTONIC, &stamp);
+  ret = clock_gettime(CLOCK_REALTIME, &stamp);
   assert(ret == 0);
 
   /* For any node information, evaluate its age and add it to the outgoing buffer */
@@ -464,7 +464,7 @@ update_time()
   struct timespec stamp;
 
   /* Get the current clock */
-  tmp = clock_gettime(CLOCK_MONOTONIC, &stamp);
+  tmp = clock_gettime(CLOCK_REALTIME, &stamp);
   assert(tmp == 0);
 
   /* Update both tables */
