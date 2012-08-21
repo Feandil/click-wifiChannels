@@ -190,14 +190,26 @@ event_end(struct ev_loop *loop, struct ev_timer *w, int revents)
 // NCurses initialization/cleaning
 
 /**
+ * Clean and rewrite a NCurses window
+ */
+#define NCURSES_REWRITE_WINDOW_CONTENT(win, ...)  \
+  werase(win);                                    \
+  wmove(win, 0, 0);                               \
+  wprintw(win, __VA_ARGS__);                      \
+  wrefresh(win);
+
+/**
  * NCurses initialization.
  * Create the output zones.
+ * @param my_ip Local IPv6 address (for title)
  */
 static void
-ncurses_init(void)
+ncurses_init(struct in6_addr *my_ip)
 {
   int pos;
   int y_pos;
+  char tmp[TMP_BUF];
+  const char *ret;
 
   /* Init */
   initscr();
@@ -232,6 +244,12 @@ ncurses_init(void)
     wrefresh(out[pos].output.time);
     y_pos += LINE_HEIGHT + LINE_SEP;
   }
+
+  title = newwin(LINE_HEIGHT, TITLE_LEN, TITLE_LINE, TITLE_COL);
+  ret = inet_ntop(AF_INET6, my_ip, tmp, TMP_BUF);
+  assert(ret != NULL);
+  NCURSES_REWRITE_WINDOW_CONTENT(title, "%s", tmp)
+  wrefresh(title);
 }
 
 /**
@@ -244,9 +262,7 @@ ncurses_stop(void)
   int pos;
 
   /* Free the title if it was created */
-  if (title != NULL) {
-    delwin(title);
-  }
+  delwin(title);
 
   /* Free in and out windows */
   for (pos = 0; pos < LINE_NB; ++pos) {
@@ -392,15 +408,6 @@ send_on(in_port_t port, struct in6_addr *addr, double offset, double delay, cons
 }
 
 /**
- * Clean and rewrite a NCurses window
- */
-#define NCURSES_REWRITE_WINDOW_CONTENT(win, ...)  \
-  werase(win);                                    \
-  wmove(win, 0, 0);                               \
-  wprintw(win, __VA_ARGS__);                      \
-  wrefresh(win);
-
-/**
  * Update the local output of a given table.
  * @param table Table to update.
  * @param tmp   Char array of size TMP_BUF used for caching.
@@ -522,14 +529,6 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
     /* Then try to see if our ipaddress is inside thoses */
     for (addr_pos = 0; addr_pos < MAX_ADDR; ++addr_pos) {
       if (IN6_IS_ADDR_LINKLOCAL(&mon->ip_addr[addr_pos])) {
-        /* If we still doesn't know our own real address, put it in the title now */
-        if (title == NULL) {
-          title = newwin(LINE_HEIGHT, TITLE_LEN, TITLE_LINE, TITLE_COL);
-          ret = inet_ntop(AF_INET6, &mon->ip_addr[addr_pos], tmp, TMP_BUF);
-          assert(ret != NULL);
-          NCURSES_REWRITE_WINDOW_CONTENT(title, "%s", tmp)
-          wrefresh(title);
-        }
         incoming = (const struct in_air*) data;
         while (*incoming->ip.s6_addr32 != 0) {
           if (memcmp(&incoming->ip, &mon->ip_addr[addr_pos], sizeof(struct in6_addr)) == 0) {
@@ -728,6 +727,7 @@ main(int argc, char *argv[])
   int size = EVALLINK_DEFAULT_SIZE;
   uint32_t scope = 0;
   static_flags = 0;
+  struct in6_addr my_ip;
 
   while((opt = getopt_long(argc, argv, "hdea:p:s:u:l:i:", long_options, NULL)) != -1) {
     switch(opt) {
@@ -820,6 +820,16 @@ main(int argc, char *argv[])
   }
   ev_init(event_killer, event_end);
 
+  recv_mess = listen_on(port, "mon0", 0, interface, &addr);
+  if (recv_mess == NULL) {
+    PRINTF("Unable to create receiving event\n")
+     return -4;
+  }
+
+  if (mon_extract_my_ip(recv_mess->data, &my_ip)) {
+    PRINTF("Unable to get the local IPv6 address\b")
+    return -5;
+  }
 
   if (!(static_flags & EVALLINK_FLAG_NOSEND)) {
     send_mess = send_on(port, &addr, 0, delay.tv_sec + (((double) delay.tv_usec) / 1000), interface, scope);
@@ -829,16 +839,10 @@ main(int argc, char *argv[])
     }
   }
 
-  recv_mess = listen_on(port, "mon0", 0, interface, &addr);
-  if (recv_mess == NULL) {
-    PRINTF("Unable to create receiving event\n")
-    return -4;
-  }
-
   signal(SIGINT, down);
 
   if (!(static_flags & EVALLINK_FLAG_DAEMON)) {
-    ncurses_init();
+    ncurses_init(&my_ip);
   }
 
   ev_loop(event_loop, 0);
