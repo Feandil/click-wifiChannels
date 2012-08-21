@@ -104,4 +104,12 @@ struct mon_io_t* monitor_listen_on(struct mon_io_t* mon, in_port_t port, const c
  */
 int mon_extract_my_ip(struct mon_io_t *mon, struct in6_addr *my_ip);
 
+/**
+ * Extract from the opaque structure a link-local address for the link.
+ * @param mon   Opaque structure describing the monitoring interface.
+ * @param my_ip Where to store the IPv6 address.
+ * @return 0 if OK, < 0 for errors
+ */
+int mon_extract_my_local_ip(struct mon_io_t *mon, struct in6_addr *my_ip);
+
 #endif /* MONITOR_H */
