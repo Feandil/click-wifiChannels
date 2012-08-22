@@ -1,0 +1,53 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2006 OpenWrt.org
+
+START=95
+boot() {
+	# set leds to normal state
+	. /etc/diag.sh
+	set_state preinit
+
+	[ -d /tmp/root ] && {
+		lock /tmp/.switch2jffs
+		firstboot switch2jffs
+		lock -u /tmp/.switch2jffs
+	}
+
+	set_state preinit
+
+	# process user commands
+	[ -f /etc/rc.local ] && {
+		sh /etc/rc.local
+	}
+
+	set_state done
+
+	#Mount USB drive
+        mkdir /root/mnt
+        mount /dev/sda1 /root/mnt
+
+	echo fu > /root/mnt/error1.log
+        /sbin/ifconfig -a >> /root/mnt/error1.log
+        /usr/sbin/iwconfig >> /root/mnt/error1.log
+        /bin/netstat -laputen >> /root/mnt/error1.log
+
+	# Task to be done at first bootup
+	if [ -f /etc/init.d/first_boot.sh ]
+	then
+		sh /etc/init.d/first_boot.sh
+		rm /etc/init.d/first_boot.sh
+		reboot
+ 	fi
+
+	set_state failsafe
+
+	# set the wifi configuration (error with the wireless conf)
+	iwconfig wlan0 mode ad-hoc essid aziala_next rate 6M channel 1
+	ifconfig wlan0 fd24:ec43:12ca:2000::12/64
+
+	set_state done
+
+	# We need some delay for the ipv6 to validate itself
+	sleep 3
+	/usr/bin/udp-test-evallink -nd &
+}
