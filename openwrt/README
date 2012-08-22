@@ -1,0 +1,28 @@
+In order to have a working OpenWRT system:
+- Go into a new directory
+- Checkout svn://svn.openwrt.org/openwrt/branches/backfire
+- Checkout svn://svn.openwrt.org/openwrt/packages 
+- Go into backfire/package
+ * Run: for i in ../../packages/*/*; do ln -s $i; done
+ * Create folders "libev" and "libev/patches" (in backfire/package):
+  + Copy libev-Makefile for the git to libev/Makefile
+  + Copy libev_patch_001-add-memory-fences.patch for the git to libev/patches/001-add-memory-fences.patch
+ * Create folder "udp-test" and "utp-test/patches" (in backfire/package):
+  + Copy Makefile for the git to utp-test/Makefile
+- Go back into backfire/
+ * Copy .config from git to .config
+ * Recursively copy files/ from git to files/
+  + Edit those configuration files as you want
+ * Run "make". In case of errors, you can run "make V=99" instead, it will give more verbose output
+
+In order to flash:
+- Put the router in flash mode (plug the power cable while pushing "retore" until the light is blinking)
+- Configure your ethernet port to use 192.168.1.2
+- Go to backfire/bin/brcm47xx/
+- Run: tftp 192.168.1.1
+ * set "rexmt 1"
+ * set "binary"
+ * launch "put openwrt-brcm47xx-squashfs.trx"
+  + The network ligth should be blinking during the transfert
+  + Wait some minutes
+  + Unplug and replug the power alimentation of the router
