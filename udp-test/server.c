@@ -112,7 +112,7 @@ drop_cb(struct ev_loop *loop, ev_io *io, int revents)
  * Store the received information using zutil
  * @param stamp     Timestamp of the reception
  * @param rate      Rate at which the packet was received, in 0.5Mb/s.
- * @param signal    Signal at which the packet was received, in dBm.
+ * @param sig       Signal at which the packet was received, in dBm.
  * @param from      IPv6 address of the sender.
  * @param data      Pointer to the memory zone containing the content of the packet.
  * @param len       Length of this memory zone.
@@ -120,7 +120,7 @@ drop_cb(struct ev_loop *loop, ev_io *io, int revents)
  * @param arg       Pointer that was passed to the read_and_parse_monitor invocation, must contain a mon_io_t structure.
  */
 static void
-consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct in6_addr *from, \
+consume_data(struct timespec *stamp, uint8_t rate, int8_t sig, const struct in6_addr *from, \
              const char* data, size_t len, uint16_t machdr_fc, void* arg)
 {
   const char *addr;
@@ -139,9 +139,9 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
 
   /* If there is a retry flag, store it. Also store signal strength and recieve rate */
   if ((machdr_fc & 0x0800) == 0x0800) {
-    tmp = snprintf(in->header, HDR_SIZE, ",R,%"PRIi8",%"PRIu8, signal, rate);
+    tmp = snprintf(in->header, HDR_SIZE, ",R,%"PRIi8",%"PRIu8, sig, rate);
   } else {
-    tmp = snprintf(in->header, HDR_SIZE, ",,%"PRIi8",%"PRIu8, signal, rate);
+    tmp = snprintf(in->header, HDR_SIZE, ",,%"PRIi8",%"PRIu8, sig, rate);
   }
   assert (tmp > 0);
   zadd_data(&in->zdata, in->header, (size_t)tmp);

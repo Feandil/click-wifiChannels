@@ -477,7 +477,7 @@ update_time()
  * Callback of a read_and_parse_monitor (from monitor.h) call, called by listen_cb.
  * @param stamp     Timestamp of the reception
  * @param rate      Rate at which the packet was received, in 0.5Mb/s.
- * @param signal    Signal at which the packet was received, in dBm.
+ * @param sig       Signal at which the packet was received, in dBm.
  * @param from      IPv6 address of the sender.
  * @param data      Pointer to the memory zone containing the content of the packet.
  * @param len       Length of this memory zone.
@@ -485,7 +485,7 @@ update_time()
  * @param arg       Pointer that was passed to the read_and_parse_monitor invocation, must contain a mon_io_t structure.
  */
 static void
-consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct in6_addr *from, \
+consume_data(struct timespec *stamp, uint8_t rate, int8_t sig, const struct in6_addr *from, \
              const char* data, size_t len, uint16_t machdr_fc, void* arg)
 {
   char tmp[TMP_BUF];
@@ -511,10 +511,10 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
     if (*inc[pos].data.ip.s6_addr32 != 0) {
       if (memcmp(&inc[pos].data.ip, from, sizeof(struct in6_addr)) == 0) {
         inc[pos].data.rate = rate;
-        inc[pos].data.db = signal;
+        inc[pos].data.db = sig;
         memcpy(&inc[pos].data.stamp, stamp, sizeof(struct timespec));
         if (!(static_flags & EVALLINK_FLAG_DAEMON)) {
-          size = snprintf(tmp, TMP_BUF, "%"PRIi8"dBm", signal);
+          size = snprintf(tmp, TMP_BUF, "%"PRIi8"dBm", sig);
           assert(size > 0);
           NCURSES_REWRITE_WINDOW_CONTENT(inc[pos].output.db, "%s", tmp);
           size = snprintf(tmp, TMP_BUF, "%"PRIu8"%sMb/s", rate / 2, (rate % 2) ? ".5" : "");
@@ -526,13 +526,13 @@ consume_data(struct timespec *stamp, uint8_t rate, int8_t signal, const struct i
     } else {
       memcpy(&inc[pos].data.ip, from, sizeof(struct in6_addr));
       inc[pos].data.rate = rate;
-      inc[pos].data.db = signal;
+      inc[pos].data.db = sig;
       memcpy(&inc[pos].data.stamp, stamp, sizeof(struct timespec));
       if (!(static_flags & EVALLINK_FLAG_DAEMON)) {
         ret = inet_ntop(AF_INET6, from, tmp, TMP_BUF);
         assert(ret != NULL);
         NCURSES_REWRITE_WINDOW_CONTENT(inc[pos].output.ip, "%s", tmp)
-        size = snprintf(tmp, TMP_BUF, "%"PRIi8"dBm", signal);
+        size = snprintf(tmp, TMP_BUF, "%"PRIi8"dBm", sig);
         assert(size > 0);
         NCURSES_REWRITE_WINDOW_CONTENT(inc[pos].output.db, "%s", tmp);
         size = snprintf(tmp, TMP_BUF, "%"PRIu8"%sMb/s", rate / 2, (rate % 2) ? ".5" : "");
