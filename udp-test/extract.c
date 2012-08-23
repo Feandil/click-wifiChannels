@@ -57,6 +57,25 @@ increment_counter(struct array_list_u64 *list, uint64_t count)
 }
 
 /**
+ * Decrease an indexed counter in an "Array List" (Recursive function).
+ * The corresponding counter NEED to be accessible and > 0 (asserts)
+ * @param list  "Array List" countaining the indexed counters
+ * @param count Index of the counter to increment
+ */
+static void
+decrease_counter(struct array_list_u64 *list, uint64_t count)
+{
+  assert(list != NULL);
+  if (count >= LIST_STEP) {
+    assert(list->next != NULL);
+    decrease_counter(list->next, count - LIST_STEP);
+  } else {
+    assert(list->data[count] != 0);
+    list->data[count] -= 1;
+  }
+}
+
+/**
  * Input description.
  */
 struct input_p
@@ -673,7 +692,7 @@ temporal_dependence(uint8_t new_state)
   }
 
 /**
- * Update the burst counting
+ * Increase the burst counting
  */
 #define ADD_BURST(dest,size)                 \
   if (dest != NULL) {                        \
@@ -684,6 +703,32 @@ temporal_dependence(uint8_t new_state)
       }                                      \
     });                                      \
   }
+
+/**
+ * Decrease the burst counting
+ */
+#define REMOVE_BURST(dest,size)              \
+  if (dest != NULL) {                        \
+    ({                                       \
+      uint64_t count_ = size - 1;            \
+      if (count_ > 0) {                      \
+        decrease_counter(dest, count_ - 1);  \
+      }                                      \
+    });                                      \
+  }
+
+/**
+ * Go back in time (make one packet disappear
+ */
+#define UNREAD_LINE(pos)                                                        \
+  REMOVE_BURST(data[pos].bursts, states[pos].count_new - states[pos].count_old) \
+  if (states[pos].count_new - states[pos].count_old > 1) {                      \
+    data[pos].signal_b -= states[pos].signal_old;                               \
+    data[pos].signal_a -= states[pos].signal_new;                               \
+    --data[pos].signal_ab_c;                                                    \
+  }                                                                             \
+  data[pos].signal_strengh[(uint8_t)states[pos].signal_new] -= 1;
+
 
 /**
  * Read a line, update associated states
@@ -733,19 +778,23 @@ first_pass(FILE* out, struct first_run *data, struct state *states)
         ++states[1].desynchronization_drop_external;
         PRINTF("File %s, ", states[1].input.filename);
         PRINTF("packet %"PRIu64" dropped because outside the global window (%lf (ref %lf) VS ref %lf)\n", states[1].count_new, states[1].timestamp, states[1].timestamp_old, states[0].timestamp_old);
+        UNREAD_LINE(1)
         states[1].timestamp_old -= interval * (double)(states[1].count_new - states[1].count_old);
         states[1].signal_new = states[1].signal_old;
         states[1].count_new = states[1].count_old;
-        return next_line_or_file(states + 1, states);
+        READ_LINE(1)
+        return tmp;
       } else if (states[1].timestamp_old - states[0].timestamp > secure_interval || states[0].timestamp - states[1].timestamp_old > interval) {
         /* External desynchro : 0 was too late compared to the expected date of 1 */
         ++states[0].desynchronization_drop_external;
         PRINTF("File %s, ", states[0].input.filename);
         PRINTF("packet %"PRIu64" dropped because outside the global window (%lf (ref %lf) VS ref %lf)\n", states[0].count_new, states[0].timestamp, states[0].timestamp_old, states[1].timestamp_old);
+        UNREAD_LINE(0)
         states[0].timestamp_old -= interval * (double)(states[0].count_new - states[0].count_old);
         states[0].signal_new = states[0].signal_old;
         states[0].count_new = states[0].count_old;
-        return next_line_or_file(states, states);
+        READ_LINE(0)
+        return tmp;
       } else {
         /* Real big desynchronization that wasn't corrected by the algorithm */
         printf("Desynchronisation between %"PRIu64" and %"PRIu64"\n", states[0].count_new, states[1].count_new);
