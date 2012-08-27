@@ -1481,6 +1481,26 @@ print_histo_correlation(FILE *histo_corr_file, struct statistics* stats)
 #undef PRINT_SEP
 
 /**
+ * Diplay more advanced statistics in a raw file.
+ * @param histo_corr_file FILE used for the output
+ * @param stats Evaluated simple stats
+ */
+static void
+print_histo_correlation_raw(FILE *histo_corr_file, struct statistics* stats)
+{
+  size_t i;
+
+  for (i = 0; i < long_history_size; ++i)
+    fprintf(histo_corr_file, "%Lf %Lf\n", \
+      (histo_corr[i].data[0b01][0b01] + histo_corr[i].data[0b01][0b00] + histo_corr[i].data[0b00][0b01] + histo_corr[i].data[0b00][0b00]) \
+        / ((long double) u64_stats[0][1] + u64_stats[0][0]), \
+      (histo_corr[i].data[0b10][0b10] + histo_corr[i].data[0b10][0b00] + histo_corr[i].data[0b00][0b10] + histo_corr[i].data[0b00][0b00]) \
+        / ((long double) u64_stats[1][0] + u64_stats[0][0]) \
+     );//"
+}
+
+
+/**
  * Print a short howto and exit.
  * @param error Execution code to return.
  * @param name  Name under which this program was called.
@@ -1525,6 +1545,7 @@ static const struct option long_options[] = {
   {"signal",      optional_argument, 0,  'p' },
   {"temp_corr_s", required_argument, 0,  '1' },
   {"temp_corr_f", required_argument, 0,  '2' },
+  {"corr_v2",     optional_argument, 0,  '5' },
   {"mean_length", required_argument, 0,  '3' },
   {"mean_file",   required_argument, 0,  '4' },
   {NULL,                          0, 0,   0  }
@@ -1574,6 +1595,7 @@ main(int argc, char *argv[])
   size_t uret;
   ssize_t sret;
   bool stats = false;
+  int corr_ver = 1;
 
   struct state *states;
   struct first_run *first;
@@ -1812,6 +1834,13 @@ PRINTF("Debug enabled\n")
           return -1;
         }
         break;
+      case '5':
+        if (corr_ver != 1) {
+          printf("--corr_v2 option is not supposed to appear more than once\n");
+          usage(-2, argv[0]);
+        }
+        corr_ver = 2;
+        break;
       default:
         usage(-1, argv[0]);
         break;
@@ -2001,7 +2030,14 @@ PRINTF("Debug enabled\n")
 
   if (histo_corr_file != NULL) {
 exit(1);
-    print_histo_correlation(histo_corr_file, statistics);
+    switch(corr_ver) {
+      case 1:
+        print_histo_correlation(histo_corr_file, statistics);
+        break;
+      case 2:
+        print_histo_correlation_raw(histo_corr_file, statistics);
+        break;
+    }
     if (histo_corr_file != stdout) {
       fclose(histo_corr_file);
     }
