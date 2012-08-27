@@ -2029,7 +2029,6 @@ PRINTF("Debug enabled\n")
   }
 
   if (histo_corr_file != NULL) {
-exit(1);
     switch(corr_ver) {
       case 1:
         print_histo_correlation(histo_corr_file, statistics);
