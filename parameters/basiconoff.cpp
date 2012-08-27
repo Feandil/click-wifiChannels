@@ -1,6 +1,8 @@
 /** @file basiconoff.cpp Implementation of the Basic On-Off parameter generation module */
+#define __STDC_LIMIT_MACROS
 
 #include "basiconoff.h"
+#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -165,7 +167,13 @@ ParamBasicOnOff::printBinaryToFile(const std::map<uint32_t, uint32_t> &map, cons
 {
   std::ofstream output;
   output.open(dest);
+#if __WORDSIZE == 64
+  size_t temp = map.size();
+  assert(temp < UINT32_MAX);
+  uint32_t size = (uint32_t) temp;
+#else /* __WORDSIZE == 64 */
   uint32_t size = map.size();
+#endif /* __WORDSIZE == 64 */
   WRITE(size)
   std::map<uint32_t, uint32_t>::const_iterator it;
   for (it = map.begin(); it != map.end(); ++it) {

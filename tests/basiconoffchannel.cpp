@@ -1,4 +1,6 @@
+#define __STDC_LIMIT_MACROS
 #include "basiconoffchannel.h"
+#include <assert.h>
 #include <iostream>
 #include <fstream>
 #include <limits.h>
@@ -14,6 +16,19 @@ const struct option BasicOnOffChannel::long_options[] = {
 
 const char * const BasicOnOffChannel::needfiles  = "BasicOnOff needs 2 intput files";
 
+#if __WORDSIZE == 64
+# define SIZE(in)              \
+  ({                           \
+    size_t temp = in.size();   \
+    assert(temp < UINT32_MAX); \
+    (uint32_t) temp;           \
+  })
+#else /* __WORDSIZE == 64 */
+# define SIZE(in) \
+    in.size()
+#endif /* __WORDSIZE == 64 */
+
+
 int
 BasicOnOffChannel::thresholdrand (const std::vector<CDFPoint> &distribution)
 {
@@ -21,8 +36,8 @@ BasicOnOffChannel::thresholdrand (const std::vector<CDFPoint> &distribution)
   
   rand = myRand.random();
   min = 0;
-  max = distribution.size() - 1;
-  pos = distribution.size() / 2;
+  max = SIZE(distribution) - 1;
+  pos = SIZE(distribution) / 2;
   while (max - min != 1) {
     if (rand > distribution[pos].probability) {
       min = pos;
