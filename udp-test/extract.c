@@ -576,7 +576,7 @@ next_line_or_file(struct state *in_state, struct state *states)
 #if __WORDSIZE == 64
     if (tmp > INT_MAX) {
       return INT_MAX;
-    } else if (INT_MIN) {
+    } else if (tmp < INT_MIN) {
       return INT_MIN;
     } else {
       return (int)tmp;
