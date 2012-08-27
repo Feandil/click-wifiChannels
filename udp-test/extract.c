@@ -195,6 +195,10 @@ uint8_t *long_history_current;
 struct historical_correlation *histo_corr;
 //! Initialization: only true if the buffer long_history is full
 bool long_history_looped;
+//! Floating mean length
+size_t floating_mean_length;
+//! Floating mean file
+FILE *floating_mean_output;
 
 /**
  * Filter "ssize_t" length into acceptable "int" length
@@ -656,10 +660,12 @@ inline static void
 temporal_dependence(uint8_t new_state)
 {
   uint8_t *current, *end;
+  uint64_t errors[2];
+  size_t mean_temp_len;
   struct historical_correlation *histo_current;
 
   /* Only try to store if we already have a full buffer and it's not an unisteresting input */
-  if (long_history_looped && (new_state != 0b11)) {
+  if (histo_corr != NULL && long_history_looped && (new_state != 0b11)) {
     histo_current = histo_corr;
 
     /* First part: long_history_current + 1 -> long_history + long_history_size */
@@ -684,6 +690,40 @@ temporal_dependence(uint8_t new_state)
       ++histo_current;
       ++current;
     }
+  }
+
+  /* Add data to the inverse floating mean */
+  if (floating_mean_output != NULL && long_history_looped) {
+    errors[0] = 0;
+    errors[1] = 0;
+    mean_temp_len = floating_mean_length;
+
+    /* First part: long_history_current + 1 -> long_history + long_history_size */
+    end = long_history + long_history_size;
+    current = long_history_current + 1;
+
+    assert(long_history <= current);
+    assert(current <= end);
+
+    while (current < end && mean_temp_len > 0) {
+      errors[0] += !((*current) & 0b10);
+      errors[1] += !((*current) & 0b01);
+      ++current;
+      --mean_temp_len;
+    }
+
+    /* Second part: long_history -> long_history_current + 1 */
+    current = long_history;
+    end = long_history_current + 1;
+
+    while (current < end && mean_temp_len > 0) {
+      errors[0] += !((*current) & 0b10);
+      errors[1] += !((*current) & 0b01);
+      ++current;
+      --mean_temp_len;
+    }
+    fprintf(floating_mean_output, "%Lf %Lf\n", ((long double)1) - ((long double)errors[0]) / ((long double)floating_mean_length), \
+                                               ((long double)1) - ((long double)errors[1]) / ((long double)floating_mean_length)); //"
   }
 
   /* Store state and update current position */
@@ -1464,6 +1504,8 @@ usage(int error, char *name)
   printf(" -p, --signal=[file]  Turn on the output of signal related statistics. If [file] is specified, use [file] for the output. Use the standard output by default\n");
   printf(" --temp_corr_s <size> Size of the history for the graphs for temporal correlation (default: disabled)\n");
   printf(" --temp_corr_f <file> File for the output of the plot function for temporal correlation (default: stdout)\n");
+  printf(" --mean_length <len>  Length of the floating interval for the floating mean (default: 0, desactivated). If temp_corr_s is used, need to be smaller than temp_corr_s\n");
+  printf(" --mean_file   <f>    File for the output of the floating mean (default: stdout)\n");
   exit(error);
 }
 
@@ -1483,6 +1525,8 @@ static const struct option long_options[] = {
   {"signal",      optional_argument, 0,  'p' },
   {"temp_corr_s", required_argument, 0,  '1' },
   {"temp_corr_f", required_argument, 0,  '2' },
+  {"mean_length", required_argument, 0,  '3' },
+  {"mean_file",   required_argument, 0,  '4' },
   {NULL,                          0, 0,   0  }
 };
 
@@ -1543,6 +1587,8 @@ main(int argc, char *argv[])
   k = 0;
   compare_histo = NULL;
   histo_corr = NULL;
+  floating_mean_length = 0;
+  floating_mean_output = NULL;
 
 PRINTF("Debug enabled\n")
 
@@ -1744,6 +1790,28 @@ PRINTF("Debug enabled\n")
           return -1;
         }
         break;
+      case '3':
+        if (floating_mean_length != 0) {
+          printf("-k option is not supposed to appear more than once\n");
+          usage(-2, argv[0]);
+        }
+        ret = sscanf(optarg, "%zu", &floating_mean_length);
+        if (ret != 1) {
+          printf("Error in --mean_length option: Not a number !\n");
+          usage(-2, argv[0]);
+        }
+        break;
+      case '4':
+        if (floating_mean_output != NULL) {
+          printf("--mean_file option is not supposed to appear more than once\n");
+          usage(-2, argv[0]);
+        }
+        floating_mean_output = fopen(optarg, "w");
+        if (floating_mean_output  == NULL) {
+          printf("Unable to open signal output file\n");
+          return -1;
+        }
+        break;
       default:
         usage(-1, argv[0]);
         break;
@@ -1829,6 +1897,28 @@ PRINTF("Debug enabled\n")
     }
   }
 
+  if (floating_mean_length != 0) {
+    if (floating_mean_output == NULL) {
+      printf("Warning, --mean_length option used without specifying file output (--mean_file), falling back to standard output\n");
+      floating_mean_output = stdout;
+    }
+    if (histo_corr != NULL) {
+      if (long_history_size < floating_mean_length) {
+        printf("When temp_corr_s is used with the floating mean, it needs to be defined bigger than the interval mean length\n");
+        usage(-2, argv[0]);
+      }
+    } else {
+      long_history_size = floating_mean_length;
+      long_history = calloc(long_history_size, sizeof(uint8_t));
+      if (long_history == NULL) {
+        printf("Malloc error\n");
+        exit(-1);
+      }
+      long_history_current = long_history + long_history_size - 1;
+      long_history_looped = false;
+    }
+  }
+
 /*
   if () {
     second = calloc(SOURCES, sizeof(struct second_run));
@@ -1909,11 +1999,16 @@ PRINTF("Debug enabled\n")
     }
   }
 
-  if (histo_corr_file !=NULL) {
+  if (histo_corr_file != NULL) {
+exit(1);
     print_histo_correlation(histo_corr_file, statistics);
     if (histo_corr_file != stdout) {
       fclose(histo_corr_file);
     }
+  }
+
+  if (floating_mean_output != NULL && floating_mean_output != stdout) {
+    fclose(floating_mean_output);
   }
 
   if (stats) {
