@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <getopt.h>
 #include <gsl/gsl_cdf.h>
+#include <limits.h>
 #include <math.h>
 #include <netinet/in.h>
 #include <stdbool.h>
@@ -196,6 +197,18 @@ struct historical_correlation *histo_corr;
 bool long_history_looped;
 
 /**
+ * Filter "ssize_t" length into acceptable "int" length
+ */
+#if __WORDSIZE == 64
+# define PRINTF_PRECISION(a) \
+  ((a > INT_MAX) ? INT_MAX : \
+  ((a < 0) ? 0 : (int)a))
+#else /* __WORDSIZE == 64 */
+# define PRINTF_PRECISION(a) \
+  (a < 0 ? 0 : a)
+#endif /* __WORDSIZE == 64 */
+
+/**
  * Read an input line, try to extract the contained data and update the input state description.
  * Filter source IPv6,
  * Filter packet too late compared to their espected arrive time,
@@ -227,7 +240,7 @@ read_input(struct state *in_state)
   /* Extract the IPv6 in string format */
   next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
-    printf("Bad input format (no closing ',' for the IP address field : ''%.*s'')\n", len, buffer);
+    printf("Bad input format (no closing ',' for the IP address field : ''%.*s'')\n", PRINTF_PRECISION(len), buffer);
     goto exit;
   }
   *next = '\0';
@@ -259,7 +272,7 @@ read_input(struct state *in_state)
   assert(len >= 0);
   next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
-    printf("Bad input format (no closing ',' for the flag field : ''%.*s'')\n", len, buffer);
+    printf("Bad input format (no closing ',' for the flag field : ''%.*s'')\n", PRINTF_PRECISION(len), buffer);
     goto exit;
   }
   ++next;
@@ -271,7 +284,7 @@ read_input(struct state *in_state)
   assert(len >= 0);
   next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
-    printf("Bad input format (no closing ',' for the signal field : ''%.*s'')\n", len, buffer);
+    printf("Bad input format (no closing ',' for the signal field : ''%.*s'')\n", PRINTF_PRECISION(len), buffer);
     goto exit;
   }
   /* Save previous value */
@@ -280,7 +293,7 @@ read_input(struct state *in_state)
   *next = '\0';
   tmp = sscanf(buffer, "%"SCNd8, &in_state->signal_new);
   if (tmp != 1) {
-    printf("Bad input format (count isn't a int8: ''%.*s'')\n", len, buffer);
+    printf("Bad input format (count isn't a int8: ''%.*s'')\n", PRINTF_PRECISION(len), buffer);
     goto exit;
   }
   /* Next entry */
@@ -292,7 +305,7 @@ read_input(struct state *in_state)
   assert(len >= 0);
   next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
-    printf("Bad input format (no closing ',' for the rate field : ''%.*s'')\n", len, buffer);
+    printf("Bad input format (no closing ',' for the rate field : ''%.*s'')\n", PRINTF_PRECISION(len), buffer);
     goto exit;
   }
   ++next;
@@ -304,7 +317,7 @@ read_input(struct state *in_state)
   assert(len >= 0);
   next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
-    printf("Bad input format (no closing ',' for the origin timestamp field : ''%.*s'')\n", len, buffer);
+    printf("Bad input format (no closing ',' for the origin timestamp field : ''%.*s'')\n", PRINTF_PRECISION(len), buffer);
     goto exit;
   }
   if (in_state->input.origin) {
@@ -312,7 +325,7 @@ read_input(struct state *in_state)
     *next = '\0';
     tmp = sscanf(buffer, "%lf", &in_state->timestamp);
     if (tmp != 1) {
-      printf("Bad input format (origin timestamp isn't a double: ''%.*s'')\n", len, buffer);
+      printf("Bad input format (origin timestamp isn't a double: ''%.*s'')\n", PRINTF_PRECISION(len), buffer);
       goto exit;
     }
   }
@@ -326,7 +339,7 @@ read_input(struct state *in_state)
   assert(len >= 0);
   next = memchr(buffer, ',', (size_t)len);
   if (next == NULL) {
-    printf("Bad input format (no closing ',' for the sent timestamp field : ''%.*s'')\n", len, buffer);
+    printf("Bad input format (no closing ',' for the sent timestamp field : ''%.*s'')\n", PRINTF_PRECISION(len), buffer);
     goto exit;
   }
   /* Save previous value */
@@ -335,7 +348,7 @@ read_input(struct state *in_state)
   *next = '\0';
   tmp = sscanf(buffer, "%"SCNd64, &in_state->count_new);
   if (tmp != 1) {
-    printf("Bad input format (count isn't a uint64: ''%.*s'')\n", len, buffer);
+    printf("Bad input format (count isn't a uint64: ''%.*s'')\n", PRINTF_PRECISION(len), buffer);
     goto exit;
   }
   /* Verify that the count is strictly increasing */
@@ -353,7 +366,7 @@ read_input(struct state *in_state)
     /* If we are not looking at the origin timestamp, transform into binary representation directly in the destination memory */
     tmp = sscanf(buffer, "%lf", &in_state->timestamp);
     if (tmp != 1) {
-      printf("Bad input format (reception timestamp isn't a double: ''%.*s'')\n", len, buffer);
+      printf("Bad input format (reception timestamp isn't a double: ''%.*s'')\n", PRINTF_PRECISION(len), buffer);
       goto exit;
     }
   }
@@ -556,7 +569,17 @@ next_line_or_file(struct state *in_state, struct state *states)
   /* Try to read directly */
   tmp = next_input(in_state, states);
   if (tmp != -1) {
+#if __WORDSIZE == 64
+    if (tmp > INT_MAX) {
+      return INT_MAX;
+    } else if (INT_MIN) {
+      return INT_MIN;
+    } else {
+      return (int)tmp;
+    }
+#else /* __WORDSIZE == 64 */
     return tmp;
+#endif /* __WORDSIZE == 64 */
   }
 
   /* If we are not using rotated files : EOF */
@@ -753,7 +776,7 @@ temporal_dependence(uint8_t new_state)
  * @param states Input description
  * @return OK: >= 0, EOF: -1, ERROR: < -1
  */
-static int
+static ssize_t
 first_pass(FILE* out, struct first_run *data, struct state *states)
 {
   ssize_t tmp;
@@ -885,7 +908,7 @@ first_pass(FILE* out, struct first_run *data, struct state *states)
  * @param states Input description
  * @return OK: >= 0, EOF: -1, ERROR: < -1
  */
-static int
+static ssize_t
 second_pass(struct second_run *data, struct state *states)
 {
   ssize_t tmp;
@@ -1858,7 +1881,7 @@ PRINTF("Debug enabled\n")
   print_desynchronisation_stats(states);
   printf("End at count: %"PRIu64", %"PRIu64"\n", states[0].count_new, states[1].count_new);
   if (sret < -1) {
-    printf("Error before EOF : %i\n", sret);
+    printf("Error before EOF : %zi\n", sret);
   }
 
   if (out_filename != NULL) {
@@ -1935,7 +1958,7 @@ PRINTF("Debug enabled\n")
       zread_end(&states[1].input.input);
     }
     if (sret < -1) {
-      printf("Error before EOF (Second loop): %i\n", sret);
+      printf("Error before EOF (Second loop): %zi\n", sret);
     }
 
 

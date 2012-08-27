@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
@@ -27,7 +28,8 @@ zadd_data(struct zutil_write* in, const char* data, size_t len)
 
   /* Give the memory zone to zlib */
   in->strm.next_in = (Bytef *)data;
-  in->strm.avail_in = len;
+  assert(len < UINT_MAX); // Should be a if but as we don't have any return, let's use an assert
+  in->strm.avail_in = (unsigned int)len;
 
   /* Keep invoking zlib until all the input disapeared */
   while (in->strm.avail_in != 0) {
@@ -127,6 +129,7 @@ static int
 zutil_read_input(struct zutil_read *buffer)
 {
   int ret;
+  size_t tmp;
 
   /* Verify that we can read the file */
   if (feof(buffer->input) != 0 && buffer->strm.avail_in == 0) {
@@ -155,7 +158,9 @@ zutil_read_input(struct zutil_read *buffer)
       }
       /* Add new input */
       buffer->strm.next_in = (Bytef*) buffer->inc;
-      buffer->strm.avail_in = fread(buffer->inc, 1, INC_BUF_SIZE, buffer->input);
+      tmp = fread(buffer->inc, 1, INC_BUF_SIZE, buffer->input);
+      assert(tmp < UINT_MAX); /* INC_BUF_SIZE should be < UINT_MAX thus this is not possible */
+      buffer->strm.avail_in = (unsigned int)tmp;
       if (ferror(buffer->input)) {
         return -2;
       }
