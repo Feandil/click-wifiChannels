@@ -477,6 +477,7 @@ next_input(struct state *inc, struct state *states)
           /* Time went forward */
           if (inc->timestamp_old > other_ts + 1.01 * secure_interval) {
             assert(inc->timestamp_old - interval > other_ts - 1.01 * secure_interval);
+            PRINTF("Resynchronisation: %s was too late, removing a packet of the other stream", inc->input.filename)
             if (inc == states) {
               --sync_count_diff;
               ++inc;
@@ -485,7 +486,6 @@ next_input(struct state *inc, struct state *states)
               --inc;
             }
             /* Make one packet disappear */
-            PRINTF("Resynchronisation: %s was too late, removing a packet of the other stream", inc->input.filename)
             if (inc->count_old == inc->count_new - 1) {
               inc->signal_new = inc->signal_old;
               ++inc->desynchronization_resync;
@@ -792,15 +792,10 @@ temporal_dependence(uint8_t new_state)
   }                                                                             \
   data[pos].signal_strengh[(uint8_t)states[pos].signal_new] -= 1;
 
-
 /**
- * Read a line, update associated states
+ * Update a state after reading a line
  */
-#define READ_LINE(pos)                                                       \
-  tmp = next_line_or_file(states + pos, states);                             \
-  if (tmp < 0) {                                                             \
-    return tmp;                                                              \
-  }                                                                          \
+#define UPDATE_STATE(pos)                                                    \
   ADD_BURST(data[pos].bursts, states[pos].count_new - states[pos].count_old) \
   if (states[pos].count_new - states[pos].count_old > 1) {                   \
     data[pos].signal_b += states[pos].signal_old;                            \
@@ -808,6 +803,22 @@ temporal_dependence(uint8_t new_state)
     ++data[pos].signal_ab_c;                                                 \
   }                                                                          \
   data[pos].signal_strengh[(uint8_t)states[pos].signal_new] += 1;
+
+/**
+ * Read a line, without state update
+ */
+#define READ_LINE_NO_UPDATE(pos)                                             \
+  tmp = next_line_or_file(states + pos, states);                             \
+  if (tmp < 0) {                                                             \
+    return tmp;                                                              \
+  }
+
+/**
+ * Read a line, update associated states
+ */
+#define READ_LINE(pos)     \
+  READ_LINE_NO_UPDATE(pos) \
+  UPDATE_STATE(pos)
 
 /**
  * Read on step the available input and update the stats of the first run.
@@ -822,6 +833,7 @@ first_pass(FILE* out, struct first_run *data, struct state *states)
   ssize_t tmp;
   uint64_t age[2];
   uint64_t i;
+  uint64_t u64_temp;
   double   ts;
 
   /* Calculate the ages */
@@ -888,8 +900,26 @@ first_pass(FILE* out, struct first_run *data, struct state *states)
       ++data[0].signal_m_c;
       ++data[1].signal_m_c;
     }
+    u64_temp = states[1].count_old;
     READ_LINE(0)
-    READ_LINE(1)
+    if (u64_temp == states[1].count_old) {
+      READ_LINE(1)
+    } else if (((int64_t)(states[0].count_old - states[1].count_new)) - sync_count_diff < 0) {
+      states[1].count_old = (uint64_t)(((int64_t)(states[0].count_old)) - sync_count_diff);
+      UPDATE_STATE(1)
+    } else if (((int64_t)(states[0].count_old - states[1].count_new)) - sync_count_diff == 0) {
+      READ_LINE(1)
+    } else {
+      assert(((int64_t)(states[0].count_old - states[1].count_new)) - sync_count_diff == 1);
+      READ_LINE_NO_UPDATE(1)
+      if (((int64_t)(states[0].count_old - states[1].count_new)) - sync_count_diff < 0) {
+        states[1].count_old = (uint64_t)(((int64_t)(states[0].count_old)) - sync_count_diff);
+        UPDATE_STATE(1)
+      } else {
+        assert(((int64_t)(states[0].count_old - states[1].count_new)) - sync_count_diff == 0);
+        READ_LINE(1)
+      }
+    }
     return tmp;
   } else if (age[0] < age[1]) {
     for(i = age[0]; i > 1; --i) {
