@@ -93,7 +93,7 @@ struct input_p
 /**
  * Window size for forward resynchronisation
  */
-#define DELAY_BEFORE_RESYNCHRONISATION  15000
+#define DELAY_BEFORE_RESYNCHRONISATION  5000
 
 /**
  * Input state description
