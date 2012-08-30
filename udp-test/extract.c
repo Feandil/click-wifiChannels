@@ -461,10 +461,10 @@ next_input(struct state *inc, struct state *states)
               --sync_count_diff;
             }
             /* Make one packet disappear */
+            ++inc->desynchronization_resync;
             PRINTF("Resynchronisation: %s was too early, removing a packet", inc->input.filename)
             if (inc->count_old == inc->count_new - 1) {
               inc->signal_new = inc->signal_old;
-              ++inc->desynchronization_resync;
               tmp = 0;
               PRINTF(" that triggered a new call\n")
             } else {
@@ -486,9 +486,9 @@ next_input(struct state *inc, struct state *states)
               --inc;
             }
             /* Make one packet disappear */
+            ++inc->desynchronization_resync;
             if (inc->count_old == inc->count_new - 1) {
               inc->signal_new = inc->signal_old;
-              ++inc->desynchronization_resync;
               tmp = 0;
               PRINTF(" that triggered a new call\n")
             } else {
